@@ -7,6 +7,8 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { ThemeProvider } from "@/components/theme-provider";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { NotificationCenter } from "@/components/notification-center";
+import { StudyBuddy } from "@/components/study-buddy";
 import { useAuth } from "@/hooks/use-auth";
 import { Skeleton } from "@/components/ui/skeleton";
 import NotFound from "@/pages/not-found";
@@ -19,6 +21,10 @@ import PomodoroPage from "@/pages/pomodoro";
 import AnalyticsPage from "@/pages/analytics";
 import KanbanPage from "@/pages/kanban";
 import ProfilePage from "@/pages/profile";
+import GroupsPage from "@/pages/groups";
+import GroupDetailPage from "@/pages/group-detail";
+import ResourcesPage from "@/pages/resources";
+import AdminDashboard from "@/pages/admin";
 
 function AppRouter() {
   return (
@@ -30,6 +36,10 @@ function AppRouter() {
       <Route path="/analytics" component={AnalyticsPage} />
       <Route path="/kanban" component={KanbanPage} />
       <Route path="/profile" component={ProfilePage} />
+      <Route path="/groups" component={GroupsPage} />
+      <Route path="/groups/:id" component={GroupDetailPage} />
+      <Route path="/resources" component={ResourcesPage} />
+      <Route path="/admin" component={AdminDashboard} />
       <Route path="/auth">{() => <Redirect to="/" />}</Route>
       <Route component={NotFound} />
     </Switch>
@@ -47,13 +57,18 @@ function AuthenticatedApp() {
       <div className="flex h-screen w-full">
         <AppSidebar />
         <div className="flex flex-col flex-1 min-w-0">
-          <header className="flex items-center justify-between gap-1 p-2 border-b h-12 shrink-0">
+          <header className="flex items-center justify-between gap-1 p-2 border-b h-12 shrink-0 px-4 bg-background/50 backdrop-blur-md sticky top-0 z-50">
             <SidebarTrigger data-testid="button-sidebar-toggle" />
-            <ThemeToggle />
+            <div className="flex items-center gap-1.5 px-1 pr-1.5 shrink-0 ml-auto">
+              <NotificationCenter />
+              <div className="h-4 w-px bg-border/40 mx-1 shrink-0" />
+              <ThemeToggle />
+            </div>
           </header>
           <main className="flex-1 overflow-auto">
             <AppRouter />
           </main>
+          <StudyBuddy />
         </div>
       </div>
     </SidebarProvider>

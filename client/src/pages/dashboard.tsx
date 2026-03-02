@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   BookOpen,
@@ -15,6 +16,9 @@ import {
   Flame,
   Trophy,
   Zap,
+  Sparkles,
+  Brain,
+  MessageCircle,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import type { Subject, Task, PomodoroSession } from "@shared/schema";
@@ -120,7 +124,7 @@ function UpcomingDeadlines({ tasks, subjects }: { tasks: Task[]; subjects: Subje
   return (
     <div className="space-y-3">
       {upcoming.map((task) => {
-        const subject = subjectMap.get(task.subjectId);
+        const subject = task.subjectId ? subjectMap.get(task.subjectId) : null;
         const deadline = task.deadline ? new Date(task.deadline) : null;
         const today = new Date();
         today.setHours(0, 0, 0, 0);
@@ -153,10 +157,10 @@ function UpcomingDeadlines({ tasks, subjects }: { tasks: Task[]; subjects: Subje
               {isOverdue
                 ? "Overdue"
                 : daysLeft === 0
-                ? "Today"
-                : daysLeft === 1
-                ? "Tomorrow"
-                : `${daysLeft}d left`}
+                  ? "Today"
+                  : daysLeft === 1
+                    ? "Tomorrow"
+                    : `${daysLeft}d left`}
             </Badge>
           </div>
         );
@@ -231,7 +235,7 @@ function RecentActivity({ tasks, subjects }: { tasks: Task[]; subjects: Subject[
   return (
     <div className="space-y-3">
       {combined.map((task) => {
-        const subject = subjectMap.get(task.subjectId);
+        const subject = task.subjectId ? subjectMap.get(task.subjectId) : null;
         return (
           <div
             key={task.id}
@@ -270,8 +274,18 @@ export default function Dashboard() {
   const { data: sessions = [], isLoading: loadingSessions } = useQuery<PomodoroSession[]>({
     queryKey: ["/api/pomodoro-sessions"],
   });
+  const { data: readinessData, isLoading: loadingReadiness } = useQuery<{ readinessScore: number }>({
+    queryKey: ["/api/users/me/readiness"],
+  });
+  const { data: insights } = useQuery<{
+    mostProductiveHour: number | null;
+    weakestSubject: string | null;
+    recommendation: string;
+  }>({
+    queryKey: ["/api/analytics/insights"],
+  });
 
-  const isLoading = loadingSubjects || loadingTasks || loadingSessions;
+  const isLoading = loadingSubjects || loadingTasks || loadingSessions || loadingReadiness;
 
   const totalTasks = tasks.length;
   const completedTasks = tasks.filter((t) => t.status === "completed").length;
@@ -281,6 +295,8 @@ export default function Dashboard() {
   }).length;
   const totalFocusMinutes = sessions.reduce((acc, s) => acc + s.duration, 0);
   const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+
+  const riskTasks = tasks.filter(t => t.riskLevel === 'high' && t.status !== 'completed');
 
   if (isLoading) {
     return (
@@ -303,15 +319,15 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="p-4 sm:p-6 space-y-5 sm:space-y-6 max-w-7xl mx-auto animate-fade-in">
+    <div className="p-4 sm:p-6 space-y-5 sm:space-y-6 max-w-7xl mx-auto animate-fade-in text-slate-900 border-none">
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-4">
         <div className="min-w-0">
-          <h1 className="text-xl sm:text-2xl font-bold truncate" data-testid="text-dashboard-title">
+          <h1 className="text-xl sm:text-2xl font-bold truncate tracking-tight" data-testid="text-dashboard-title">
             {greeting()}, {user?.displayName || user?.username || "Student"}
           </h1>
           <p className="text-muted-foreground text-sm mt-1">
             {user && user.streakCount > 0
-              ? <span className="inline-flex items-center gap-1"><Flame className="h-3.5 w-3.5 text-orange-500" /> {user.streakCount} day streak — keep the momentum going!</span>
+              ? <span className="inline-flex items-center gap-1"><Flame className="h-3.5 w-3.5 text-orange-500 fill-orange-500/20" /> <b>{user.streakCount} day streak</b> — keep the momentum going!</span>
               : "Track your study progress and stay on top of deadlines."}
           </p>
         </div>
@@ -322,46 +338,86 @@ export default function Dashboard() {
               {user.streakCount} day streak
             </Badge>
           )}
+          <Button variant="outline" size="sm" className="hidden sm:flex gap-2 border-primary/20 text-primary hover:bg-primary/5 rounded-full" onClick={() => window.location.href = '/tasks'}>
+            <Sparkles className="h-4 w-4" />
+            AI Smart Reorder
+          </Button>
         </div>
       </div>
 
+      {insights && (
+        <Card className="border-none shadow-none bg-primary/10 overflow-hidden relative group">
+          <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-110 transition-transform">
+            <Sparkles className="h-24 w-24 text-primary" />
+          </div>
+          <CardContent className="p-6">
+            <div className="flex flex-col md:flex-row items-center gap-6 relative">
+              <div className="h-16 w-16 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
+                <Brain className="h-8 w-8 text-primary animate-pulse" />
+              </div>
+              <div className="space-y-2 flex-1 text-center md:text-left">
+                <h3 className="text-lg font-bold text-primary flex items-center justify-center md:justify-start gap-2">
+                  AI Study Insight
+                  <Badge variant="outline" className="border-primary/30 text-primary text-[10px] font-bold">ALPHA</Badge>
+                </h3>
+                <p className="text-sm leading-relaxed text-slate-800 font-medium italic">
+                  "{insights.recommendation}"
+                </p>
+                <div className="flex flex-wrap gap-4 pt-2">
+                  {insights.mostProductiveHour !== null && (
+                    <div className="flex items-center gap-1.5 text-xs text-slate-600">
+                      <Clock className="h-3.5 w-3.5 text-primary/70" />
+                      Peak Logic: <b>{insights.mostProductiveHour % 12 || 12}{insights.mostProductiveHour >= 12 ? 'PM' : 'AM'}</b>
+                    </div>
+                  )}
+                  {insights.weakestSubject && (
+                    <div className="flex items-center gap-1.5 text-xs text-slate-600">
+                      <Target className="h-3.5 w-3.5 text-orange-500/70" />
+                      Weak Zone: <b>{insights.weakestSubject}</b>
+                    </div>
+                  )}
+                  {riskTasks.length > 0 && (
+                    <div className="flex items-center gap-1.5 text-xs text-red-600">
+                      <AlertTriangle className="h-3.5 w-3.5" />
+                      <b>{riskTasks.length} HIGH RISK</b> Tasks Detected
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="animate-fade-in stagger-1">
-          <StatCard
-            title="Total Tasks"
-            value={totalTasks}
-            subtitle={`${completedTasks} completed`}
-            icon={ListTodo}
-            color="#3B82F6"
-          />
-        </div>
-        <div className="animate-fade-in stagger-2">
-          <StatCard
-            title="Completion Rate"
-            value={`${completionRate}%`}
-            subtitle={`${totalTasks - completedTasks} remaining`}
-            icon={Target}
-            color="#10B981"
-          />
-        </div>
-        <div className="animate-fade-in stagger-3">
-          <StatCard
-            title="Focus Time"
-            value={`${Math.floor(totalFocusMinutes / 60)}h ${totalFocusMinutes % 60}m`}
-            subtitle={`${sessions.length} sessions`}
-            icon={Timer}
-            color="#8B5CF6"
-          />
-        </div>
-        <div className="animate-fade-in stagger-4">
-          <StatCard
-            title="Overdue"
-            value={overdueTasks}
-            subtitle={overdueTasks > 0 ? "Needs attention" : "All on track"}
-            icon={AlertTriangle}
-            color={overdueTasks > 0 ? "#EF4444" : "#10B981"}
-          />
-        </div>
+        <StatCard
+          title="Total Tasks"
+          value={totalTasks}
+          subtitle={`${completedTasks} completed`}
+          icon={ListTodo}
+          color="#3B82F6"
+        />
+        <StatCard
+          title="Completion Rate"
+          value={`${completionRate}%`}
+          subtitle={`${totalTasks - completedTasks} remaining`}
+          icon={Target}
+          color="#10B981"
+        />
+        <StatCard
+          title="Focus Time"
+          value={`${Math.floor(totalFocusMinutes / 60)}h ${totalFocusMinutes % 60}m`}
+          subtitle={`${sessions.length} sessions`}
+          icon={Timer}
+          color="#8B5CF6"
+        />
+        <StatCard
+          title="Readiness"
+          value={`${readinessData?.readinessScore || 0}%`}
+          subtitle="Based on AI analysis"
+          icon={Brain}
+          color="#EC4899"
+        />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">

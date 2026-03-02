@@ -32,19 +32,22 @@ import {
   Calendar,
   Trash2,
   ListTodo,
+  Users,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { PRIORITIES } from "@/lib/constants";
-import type { Subject, Task } from "@shared/schema";
+import type { Subject, Task, StudyGroup } from "@shared/schema";
 
 function TaskForm({
   task,
   subjects,
+  groups,
   onClose,
 }: {
   task?: Task;
   subjects: Subject[];
+  groups: StudyGroup[];
   onClose: () => void;
 }) {
   const [title, setTitle] = useState(task?.title || "");
@@ -56,6 +59,7 @@ function TaskForm({
   const [estimatedMinutes, setEstimatedMinutes] = useState(
     task?.estimatedMinutes?.toString() || ""
   );
+  const [groupId, setGroupId] = useState(task?.groupId?.toString() || "none");
   const { toast } = useToast();
 
   const createMutation = useMutation({
@@ -95,6 +99,7 @@ function TaskForm({
       title: title.trim(),
       description: description.trim() || null,
       subjectId: parseInt(subjectId),
+      groupId: groupId === "none" ? null : parseInt(groupId),
       priority,
       status,
       deadline: deadline || null,
@@ -203,6 +208,23 @@ function TaskForm({
         </div>
       </div>
 
+      <div className="space-y-2">
+        <Label>Associated Group (optional)</Label>
+        <Select value={groupId} onValueChange={setGroupId}>
+          <SelectTrigger data-testid="select-task-group">
+            <SelectValue placeholder="No group" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="none">Personal Task (No group)</SelectItem>
+            {groups.map((g) => (
+              <SelectItem key={g.id} value={g.id.toString()}>
+                {g.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
       <div className="flex justify-end gap-2 pt-2">
         <Button type="button" variant="outline" onClick={onClose} data-testid="button-cancel-task">
           Cancel
@@ -218,12 +240,14 @@ function TaskForm({
 function TaskCard({
   task,
   subject,
+  group,
   onEdit,
   onToggle,
   onDelete,
 }: {
   task: Task;
   subject?: Subject;
+  group?: StudyGroup;
   onEdit: () => void;
   onToggle: () => void;
   onDelete: () => void;
@@ -238,9 +262,8 @@ function TaskCard({
 
   return (
     <div
-      className={`flex items-start gap-3 rounded-md border p-4 transition-all duration-200 hover:border-primary/30 ${
-        task.status === "completed" ? "opacity-60" : ""
-      }`}
+      className={`flex items-start gap-3 rounded-md border p-4 transition-all duration-200 hover:border-primary/30 ${task.status === "completed" ? "opacity-60" : ""
+        }`}
       data-testid={`card-task-${task.id}`}
     >
       <Checkbox
@@ -252,9 +275,8 @@ function TaskCard({
       <div className="flex-1 min-w-0 space-y-1">
         <div className="flex items-center gap-2 flex-wrap">
           <p
-            className={`text-sm font-medium ${
-              task.status === "completed" ? "line-through text-muted-foreground" : ""
-            }`}
+            className={`text-sm font-medium ${task.status === "completed" ? "line-through text-muted-foreground" : ""
+              }`}
           >
             {task.title}
           </p>
@@ -272,6 +294,12 @@ function TaskCard({
               />
               {subject.name}
             </span>
+          )}
+          {group && (
+            <Badge variant="secondary" className="text-[10px] py-0 h-4 gap-1 rounded-full opacity-70">
+              <Users className="h-2.5 w-2.5" />
+              {group.name}
+            </Badge>
           )}
           {deadline && (
             <span className={`flex items-center gap-1 ${isOverdue ? "text-red-500" : ""}`}>
@@ -307,6 +335,7 @@ export default function TasksPage() {
   const { toast } = useToast();
 
   const { data: subjects = [] } = useQuery<Subject[]>({ queryKey: ["/api/subjects"] });
+  const { data: groups = [] } = useQuery<StudyGroup[]>({ queryKey: ["/api/groups"] });
   const { data: tasks = [], isLoading } = useQuery<Task[]>({ queryKey: ["/api/tasks"] });
 
   const subjectMap = new Map(subjects.map((s) => [s.id, s]));
@@ -367,7 +396,8 @@ export default function TasksPage() {
           <TaskCard
             key={task.id}
             task={task}
-            subject={subjectMap.get(task.subjectId)}
+            subject={subjectMap.get(task.subjectId!)}
+            group={groups.find(g => g.id === task.groupId)}
             onEdit={() => openEdit(task)}
             onToggle={() =>
               toggleMutation.mutate({
@@ -435,6 +465,7 @@ export default function TasksPage() {
               <TaskForm
                 task={editingTask}
                 subjects={subjects}
+                groups={groups}
                 onClose={() => setDialogOpen(false)}
               />
             </DialogContent>

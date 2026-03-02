@@ -9,10 +9,12 @@ export const users = pgTable("users", {
   password: text("password").notNull(),
   displayName: text("display_name"),
   avatar: text("avatar"),
+  isAdmin: integer("is_admin").notNull().default(0),
   streakCount: integer("streak_count").notNull().default(0),
   totalStudyMinutes: integer("total_study_minutes").notNull().default(0),
   productivityScore: integer("productivity_score").notNull().default(0),
   lastActiveDate: text("last_active_date"),
+  readinessScore: integer("readiness_score").notNull().default(0),
   createdAt: text("created_at").notNull().default(sql`now()`),
 });
 
@@ -25,18 +27,38 @@ export const subjects = pgTable("subjects", {
   difficultyLevel: integer("difficulty_level").notNull().default(3),
 });
 
+export const studyGroups = pgTable("study_groups", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  name: text("name").notNull(),
+  description: text("description"),
+  inviteCode: text("invite_code").notNull().unique(),
+  createdBy: integer("created_by").notNull().references(() => users.id),
+  createdAt: text("created_at").notNull().default(sql`now()`),
+});
+
+export const groupMembers = pgTable("group_members", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  groupId: integer("group_id").notNull().references(() => studyGroups.id, { onDelete: "cascade" }),
+  role: text("role").notNull().default("member"), // 'admin' or 'member'
+  joinedAt: text("joined_at").notNull().default(sql`now()`),
+});
+
 export const tasks = pgTable("tasks", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }),
+  groupId: integer("group_id").references(() => studyGroups.id, { onDelete: "cascade" }),
+  assignedTo: integer("assigned_to").references(() => users.id, { onDelete: "set null" }),
   title: text("title").notNull(),
   description: text("description"),
-  subjectId: integer("subject_id").notNull().references(() => subjects.id, { onDelete: "cascade" }),
+  subjectId: integer("subject_id").references(() => subjects.id, { onDelete: "cascade" }),
   priority: text("priority").notNull().default("medium"),
   status: text("status").notNull().default("todo"),
   deadline: text("deadline"),
   estimatedMinutes: integer("estimated_minutes"),
   completedAt: text("completed_at"),
   kanbanOrder: integer("kanban_order").notNull().default(0),
+  riskLevel: text("risk_level").notNull().default("normal"),
 });
 
 export const pomodoroSessions = pgTable("pomodoro_sessions", {
@@ -51,6 +73,7 @@ export const pomodoroSessions = pgTable("pomodoro_sessions", {
 export const resources = pgTable("resources", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }),
+  groupId: integer("group_id").references(() => studyGroups.id, { onDelete: "cascade" }),
   title: text("title").notNull(),
   description: text("description"),
   type: text("type").notNull(),
@@ -59,6 +82,25 @@ export const resources = pgTable("resources", {
   fileName: text("file_name"),
   subjectId: integer("subject_id").references(() => subjects.id, { onDelete: "set null" }),
   isPublic: integer("is_public").notNull().default(1),
+  aiSummary: text("ai_summary"),
+  createdAt: text("created_at").notNull().default(sql`now()`),
+});
+
+export const comments = pgTable("comments", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  resourceId: integer("resource_id").notNull().references(() => resources.id, { onDelete: "cascade" }),
+  content: text("content").notNull(),
+  createdAt: text("created_at").notNull().default(sql`now()`),
+});
+
+export const notifications = pgTable("notifications", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  message: text("message").notNull(),
+  type: text("type").notNull(), // 'deadline', 'group', 'resource'
+  isRead: integer("is_read").notNull().default(0),
   createdAt: text("created_at").notNull().default(sql`now()`),
 });
 
@@ -81,15 +123,28 @@ export const insertSubjectSchema = z.object({
   difficultyLevel: z.number().int().min(1).max(5).default(3),
 });
 
+export const insertStudyGroupSchema = z.object({
+  name: z.string().min(3),
+  description: z.string().optional(),
+});
+
+export const insertCommentSchema = z.object({
+  resourceId: z.number().int(),
+  content: z.string().min(1),
+});
+
 export const insertTaskSchema = z.object({
   title: z.string().min(1),
   description: z.string().nullable().optional(),
-  subjectId: z.number().int(),
+  subjectId: z.number().int().nullable().optional(),
+  groupId: z.number().int().nullable().optional(),
+  assignedTo: z.number().int().nullable().optional(),
   priority: z.string().default("medium"),
   status: z.string().default("todo"),
   deadline: z.string().nullable().optional(),
   estimatedMinutes: z.number().int().nullable().optional(),
   kanbanOrder: z.number().int().default(0),
+  riskLevel: z.string().default("normal"),
 });
 
 export const insertPomodoroSessionSchema = z.object({
@@ -104,8 +159,9 @@ export const insertResourceSchema = z.object({
   description: z.string().nullable().optional(),
   type: z.enum(["link", "file", "note"]),
   url: z.string().nullable().optional(),
-  subjectId: z.number().int().nullable().optional(),
-  isPublic: z.number().int().default(1),
+  subjectId: z.coerce.number().int().nullable().optional(),
+  groupId: z.coerce.number().int().nullable().optional(),
+  isPublic: z.coerce.number().int().default(1),
 });
 
 export const updateProfileSchema = z.object({
@@ -121,3 +177,9 @@ export type PomodoroSession = typeof pomodoroSessions.$inferSelect;
 export type InsertPomodoroSession = z.infer<typeof insertPomodoroSessionSchema>;
 export type Resource = typeof resources.$inferSelect;
 export type InsertResource = z.infer<typeof insertResourceSchema>;
+export type StudyGroup = typeof studyGroups.$inferSelect;
+export type InsertStudyGroup = z.infer<typeof insertStudyGroupSchema>;
+export type GroupMember = typeof groupMembers.$inferSelect;
+export type Comment = typeof comments.$inferSelect;
+export type InsertComment = z.infer<typeof insertCommentSchema>;
+export type Notification = typeof notifications.$inferSelect;

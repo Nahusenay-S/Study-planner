@@ -9,6 +9,9 @@ import {
   Kanban,
   User,
   LogOut,
+  Users,
+  FolderOpen,
+  Shield
 } from "lucide-react";
 import {
   Sidebar,
@@ -33,6 +36,8 @@ const mainNav = [
   { title: "Kanban", url: "/kanban", icon: Kanban },
   { title: "Pomodoro", url: "/pomodoro", icon: Timer },
   { title: "Analytics", url: "/analytics", icon: BarChart3 },
+  { title: "Groups", url: "/groups", icon: Users },
+  { title: "Resources", url: "/resources", icon: FolderOpen },
 ];
 
 const accountNav = [
@@ -103,6 +108,22 @@ export function AppSidebar() {
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
+
+              {user?.isAdmin === 1 && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={location === "/admin"}
+                    data-active={location === "/admin"}
+                    className="transition-colors duration-200 data-[active=true]:bg-sidebar-accent data-[active=true]:relative data-[active=true]:before:absolute data-[active=true]:before:left-0 data-[active=true]:before:top-1/2 data-[active=true]:before:-translate-y-1/2 data-[active=true]:before:h-4 data-[active=true]:before:w-0.5 data-[active=true]:before:rounded-full data-[active=true]:before:bg-primary"
+                  >
+                    <Link href="/admin" data-testid="link-admin">
+                      <Shield className="h-4 w-4 text-amber-500" />
+                      <span className="font-bold text-amber-500">System Admin</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

@@ -26,8 +26,8 @@ const features = [
   { icon: CheckSquare, label: "Tasks", gradient: "from-violet-500 to-purple-400" },
   { icon: Timer, label: "Pomodoro", gradient: "from-rose-500 to-pink-400" },
   { icon: Kanban, label: "Kanban", gradient: "from-amber-500 to-orange-400" },
+  { icon: Sparkles, label: "AI Tutor", gradient: "from-pink-500 to-rose-400" },
   { icon: BarChart3, label: "Analytics", gradient: "from-emerald-500 to-green-400" },
-  { icon: Flame, label: "Streaks", gradient: "from-red-500 to-rose-400" },
 ];
 
 const stats = [

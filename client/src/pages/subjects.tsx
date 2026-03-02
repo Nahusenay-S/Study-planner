@@ -108,9 +108,8 @@ function SubjectForm({
               key={c}
               type="button"
               onClick={() => setColor(c)}
-              className={`h-8 w-8 rounded-full transition-all ${
-                color === c ? "ring-2 ring-offset-2 ring-primary" : ""
-              }`}
+              className={`h-8 w-8 rounded-full transition-all ${color === c ? "ring-2 ring-offset-2 ring-primary" : ""
+                }`}
               style={{ backgroundColor: c }}
               data-testid={`color-option-${c}`}
             />
@@ -126,11 +125,10 @@ function SubjectForm({
               key={key}
               type="button"
               onClick={() => setIcon(key)}
-              className={`flex h-9 w-9 items-center justify-center rounded-md transition-all ${
-                icon === key
+              className={`flex h-9 w-9 items-center justify-center rounded-md transition-all ${icon === key
                   ? "bg-primary text-primary-foreground"
                   : "bg-muted text-muted-foreground hover-elevate"
-              }`}
+                }`}
               data-testid={`icon-option-${key}`}
             >
               <IconComp className="h-4 w-4" />

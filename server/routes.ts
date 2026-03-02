@@ -5,10 +5,13 @@ import connectPgSimple from "connect-pg-simple";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
-import { storage } from "./storage";
-import { registerSchema, loginSchema, insertSubjectSchema, insertTaskSchema, insertPomodoroSessionSchema, insertResourceSchema, updateProfileSchema } from "@shared/schema";
+import { storage, db } from "./storage";
+import { registerSchema, loginSchema, insertSubjectSchema, insertTaskSchema, insertPomodoroSessionSchema, insertResourceSchema, updateProfileSchema, insertStudyGroupSchema, insertCommentSchema, users, studyGroups, resources, tasks } from "@shared/schema";
 import { z } from "zod";
+import { sql } from "drizzle-orm";
 import bcrypt from "bcryptjs";
+import { generateStudySchedule, summarizeResource, calculateReadinessScore, chatWithAI, generateQuiz } from "./ai";
+import { differenceInDays, parseISO, startOfDay } from "date-fns";
 
 const uploadsDir = path.join(process.cwd(), "uploads", "avatars");
 const resourcesDir = path.join(process.cwd(), "uploads", "resources");
@@ -59,11 +62,21 @@ const updateTaskSchema = z.object({
   estimatedMinutes: z.number().int().nullable().optional(),
   completedAt: z.string().nullable().optional(),
   kanbanOrder: z.number().int().optional(),
+  riskLevel: z.string().optional(),
 });
 
 function requireAuth(req: Request, res: Response, next: NextFunction) {
   if (!req.session.userId) {
     return res.status(401).json({ message: "Not authenticated" });
+  }
+  next();
+}
+
+async function requireAdmin(req: Request, res: Response, next: NextFunction) {
+  if (!req.session.userId) return res.status(401).json({ message: "Not authenticated" });
+  const user = await storage.getUserById(req.session.userId);
+  if (!user || user.isAdmin !== 1) {
+    return res.status(403).json({ message: "Access denied. Admin only." });
   }
   next();
 }
@@ -134,10 +147,61 @@ export async function registerRoutes(
     });
   });
 
+  // Demo Endpoint to grant user Admin Access
+  app.get("/api/auth/make-me-admin", async (req, res) => {
+    // Elevate all users or just the current user (using db.update without where makes everyone admin for demo)
+    await db.update(users).set({ isAdmin: 1 });
+    res.json({ message: "You are now a System Admin! Please refresh the page to see the new dashboard." });
+  });
+
+  // System Admin Endpoints
+  app.get("/api/admin/metrics", requireAdmin, async (req, res) => {
+    const userCount = await db.select({ count: sql<number>`count(*)` }).from(users);
+    const groupCount = await db.select({ count: sql<number>`count(*)` }).from(studyGroups);
+    const resourceCount = await db.select({ count: sql<number>`count(*)` }).from(resources);
+    const taskCount = await db.select({ count: sql<number>`count(*)` }).from(tasks);
+
+    // Also fetch the top 10 most recent users
+    const recentUsers = await db.select({
+      id: users.id,
+      username: users.username,
+      email: users.email,
+      isAdmin: users.isAdmin,
+      createdAt: users.createdAt,
+    }).from(users).orderBy(sql`created_at DESC`).limit(10);
+
+    res.json({
+      metrics: {
+        users: userCount[0].count,
+        groups: groupCount[0].count,
+        resources: resourceCount[0].count,
+        tasks: taskCount[0].count,
+      },
+      recentUsers
+    });
+  });
+
   app.get("/api/auth/me", async (req, res) => {
     if (!req.session.userId) return res.status(401).json({ message: "Not authenticated" });
     const user = await storage.getUserById(req.session.userId);
-    if (!user) return res.status(401).json({ message: "User not found" });
+    if (!user) return res.status(401).json({ message: "Not authenticated" });
+
+    // Proactive Deadline Alert Engine
+    const highRiskTasks = (await storage.getTasks(user.id)).filter(t => t.riskLevel === 'high' && t.status !== 'completed');
+    if (highRiskTasks.length > 0) {
+      const existingNotifs = await storage.getNotifications(user.id);
+      for (const task of highRiskTasks) {
+        const hasNotif = existingNotifs.some(n => n.title.includes(task.title) && n.type === 'deadline');
+        if (!hasNotif) {
+          await storage.createNotification(user.id, {
+            title: `🚨 High Risk: ${task.title}`,
+            message: `This task requires focus! You have more work estimated than remaining days.`,
+            type: 'deadline'
+          });
+        }
+      }
+    }
+
     const { password, ...safeUser } = user;
     res.json(safeUser);
   });
@@ -172,7 +236,7 @@ export async function registerRoutes(
       const existingUser = await storage.getUserById(req.session.userId!);
       if (existingUser?.avatar) safeDeleteAvatar(existingUser.avatar);
 
-      const avatarUrl = `/uploads/avatars/${req.file.filename}`;
+      const avatarUrl = `/ uploads / avatars / ${req.file.filename}`;
       const user = await storage.updateUser(req.session.userId!, { avatar: avatarUrl });
       if (!user) return res.status(404).json({ message: "User not found" });
       const { password, ...safeUser } = user;
@@ -229,9 +293,32 @@ export async function registerRoutes(
   app.post("/api/tasks", requireAuth, async (req, res) => {
     const parsed = insertTaskSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
-    const owned = await storage.getSubject(parsed.data.subjectId, req.session.userId!);
-    if (!owned) return res.status(400).json({ message: "Subject not found" });
-    const task = await storage.createTask(req.session.userId!, parsed.data);
+
+    if (parsed.data.subjectId) {
+      const owned = await storage.getSubject(parsed.data.subjectId, req.session.userId!);
+      if (!owned) return res.status(400).json({ message: "Subject not found" });
+    }
+
+    if (parsed.data.groupId) {
+      const member = await storage.isGroupMember(req.session.userId!, parsed.data.groupId);
+      if (!member) return res.status(403).json({ message: "You are not a member of this group" });
+    }
+
+    // AI Risk Engine Logic
+    let riskLevel = "normal";
+    if (parsed.data.deadline && parsed.data.estimatedMinutes) {
+      const deadline = startOfDay(parseISO(parsed.data.deadline));
+      const today = startOfDay(new Date());
+      const daysLeft = Math.max(1, differenceInDays(deadline, today));
+      const avgStudyMinutesPerDay = 120; // 2 hours
+
+      if (parsed.data.estimatedMinutes > daysLeft * avgStudyMinutesPerDay) {
+        riskLevel = "high";
+      }
+    }
+
+    const taskData = { ...parsed.data, riskLevel };
+    const task = await storage.createTask(req.session.userId!, taskData);
     res.status(201).json(task);
   });
 
@@ -244,7 +331,30 @@ export async function registerRoutes(
       const owned = await storage.getSubject(parsed.data.subjectId, req.session.userId!);
       if (!owned) return res.status(400).json({ message: "Subject not found" });
     }
-    const task = await storage.updateTask(id, req.session.userId!, parsed.data);
+
+    // AI Risk Engine Logic (on update)
+    let riskLevel = undefined;
+    if (parsed.data.deadline !== undefined || parsed.data.estimatedMinutes !== undefined) {
+      // We might need existing task data if one is missing in the update
+      const existing = await storage.getTask(id, req.session.userId!);
+      if (existing) {
+        const deadlineStr = parsed.data.deadline !== undefined ? parsed.data.deadline : existing.deadline;
+        const estMinutes = parsed.data.estimatedMinutes !== undefined ? parsed.data.estimatedMinutes : existing.estimatedMinutes;
+
+        if (deadlineStr && estMinutes) {
+          const deadline = startOfDay(parseISO(deadlineStr));
+          const today = startOfDay(new Date());
+          const daysLeft = Math.max(1, differenceInDays(deadline, today));
+          const avgStudyMinutesPerDay = 120;
+          riskLevel = estMinutes > daysLeft * avgStudyMinutesPerDay ? "high" : "normal";
+        }
+      }
+    }
+
+    const updateData = { ...parsed.data };
+    if (riskLevel) updateData.riskLevel = riskLevel;
+
+    const task = await storage.updateTask(id, req.session.userId!, updateData);
     if (!task) return res.status(404).json({ message: "Task not found" });
     res.json(task);
   });
@@ -266,7 +376,7 @@ export async function registerRoutes(
     destination: (_req, _file, cb) => cb(null, resourcesDir),
     filename: (req, _file, cb) => {
       const ext = path.extname(_file.originalname);
-      cb(null, `resource-${req.session.userId}-${Date.now()}${ext}`);
+      cb(null, `resource - ${req.session.userId} - ${Date.now()}${ext}`);
     },
   });
 
@@ -276,7 +386,7 @@ export async function registerRoutes(
   });
 
   app.get("/api/resources", requireAuth, async (req, res) => {
-    const resources = await storage.getResources();
+    const resources = await storage.getResources(req.session.userId!);
     res.json(resources);
   });
 
@@ -290,13 +400,30 @@ export async function registerRoutes(
       if (err) {
         return res.status(400).json({ message: err.message || "Upload failed" });
       }
-      const parsed = insertResourceSchema.safeParse(req.body);
-      if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+
+      // Multer puts fields in req.body as strings. We must coerce them for Zod/DB.
+      const body = { ...req.body };
+      if (body.isPublic !== undefined) body.isPublic = parseInt(String(body.isPublic), 10);
+      if (body.subjectId === "null" || body.subjectId === "") body.subjectId = null;
+      else if (body.subjectId !== undefined) body.subjectId = parseInt(String(body.subjectId), 10);
+
+      if (body.groupId === "null" || body.groupId === "") body.groupId = null;
+      else if (body.groupId !== undefined) body.groupId = parseInt(String(body.groupId), 10);
+
+      const parsed = insertResourceSchema.safeParse(body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: parsed.error.message });
+      }
 
       const resourceData: any = { ...parsed.data };
       if (req.file) {
         resourceData.filePath = `/uploads/resources/${req.file.filename}`;
         resourceData.fileName = req.file.originalname;
+      }
+
+      if (resourceData.groupId) {
+        const member = await storage.isGroupMember(req.session.userId!, resourceData.groupId);
+        if (!member) return res.status(403).json({ message: "You are not a member of this group" });
       }
 
       const resource = await storage.createResource(req.session.userId!, resourceData);
@@ -343,6 +470,242 @@ export async function registerRoutes(
     }
 
     res.status(201).json(session_);
+  });
+
+  // Study Groups (Phase 2)
+  app.get("/api/groups", requireAuth, async (req, res) => {
+    const groups = await storage.getStudyGroups(req.session.userId!);
+    res.json(groups);
+  });
+
+  app.post("/api/groups", requireAuth, async (req, res) => {
+    const parsed = insertStudyGroupSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+    const group = await storage.createStudyGroup(req.session.userId!, parsed.data);
+    res.status(201).json(group);
+  });
+
+  app.post("/api/groups/join", requireAuth, async (req, res) => {
+    const { inviteCode } = req.body;
+    if (!inviteCode) return res.status(400).json({ message: "Invite code is required" });
+
+    const group = await storage.getStudyGroupByInviteCode(inviteCode);
+    if (!group) return res.status(404).json({ message: "Invalid invite code" });
+
+    const isMember = await storage.isGroupMember(req.session.userId!, group.id);
+    if (isMember) return res.status(400).json({ message: "Already a member of this group" });
+
+    await storage.joinStudyGroup(req.session.userId!, group.id);
+    res.json(group);
+  });
+
+  app.get("/api/groups/:id", requireAuth, async (req, res) => {
+    const id = parseInt(String(req.params.id));
+    const member = await storage.isGroupMember(req.session.userId!, id);
+    if (!member) return res.status(403).json({ message: "Access denied" });
+
+    const group = await storage.getStudyGroup(id);
+    if (!group) return res.status(404).json({ message: "Group not found" });
+    res.json(group);
+  });
+
+  app.get("/api/groups/:id/members", requireAuth, async (req, res) => {
+    const id = parseInt(String(req.params.id));
+    const member = await storage.isGroupMember(req.session.userId!, id);
+    if (!member) return res.status(403).json({ message: "Access denied" });
+
+    const members = await storage.getGroupMembers(id);
+    res.json(members);
+  });
+
+  app.get("/api/groups/:id/tasks", requireAuth, async (req, res) => {
+    const id = parseInt(String(req.params.id));
+    const member = await storage.isGroupMember(req.session.userId!, id);
+    if (!member) return res.status(403).json({ message: "Access denied" });
+
+    const tasks = await storage.getGroupTasks(id);
+    res.json(tasks);
+  });
+
+  app.get("/api/groups/:id/resources", requireAuth, async (req, res) => {
+    const id = parseInt(String(req.params.id));
+    const member = await storage.isGroupMember(req.session.userId!, id);
+    if (!member) return res.status(403).json({ message: "Access denied" });
+
+    const resources = await storage.getGroupResources(id);
+    res.json(resources);
+  });
+
+  // Comments (Phase 2)
+  app.get("/api/resources/:id/comments", requireAuth, async (req, res) => {
+    const id = parseInt(String(req.params.id));
+    const comments = await storage.getComments(id);
+    res.json(comments);
+  });
+
+  app.post("/api/resources/:id/comments", requireAuth, async (req, res) => {
+    const resourceId = parseInt(String(req.params.id));
+    const parsed = insertCommentSchema.safeParse({ ...req.body, resourceId });
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+
+    const comment = await storage.createComment(req.session.userId!, parsed.data);
+    res.status(201).json(comment);
+  });
+
+  // Notifications (Phase 2)
+  app.get("/api/notifications", requireAuth, async (req, res) => {
+    const notifications = await storage.getNotifications(req.session.userId!);
+    res.json(notifications);
+  });
+
+  app.post("/api/notifications/:id/read", requireAuth, async (req, res) => {
+    const id = parseInt(String(req.params.id));
+    const success = await storage.markNotificationRead(id, req.session.userId!);
+    if (!success) return res.status(404).json({ message: "Notification not found" });
+    res.status(204).send();
+  });
+
+  // AI Features (Phase 3)
+  app.post("/api/ai/schedule", requireAuth, async (req, res) => {
+    try {
+      const tasks = await storage.getTasks(req.session.userId!);
+      const subjects = await storage.getSubjects(req.session.userId!);
+
+      const pendingTasks = tasks.filter(t => t.status !== "completed");
+      if (pendingTasks.length === 0) {
+        return res.json({ message: "No pending tasks to schedule" });
+      }
+
+      const schedule = await generateStudySchedule(pendingTasks, subjects);
+      res.json(schedule);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to generate AI schedule" });
+    }
+  });
+
+  app.post("/api/resources/:id/summarize", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(String(req.params.id));
+      const resource = await storage.getResource(id);
+
+      if (!resource) return res.status(404).json({ message: "Resource not found" });
+      if (resource.userId !== req.session.userId) {
+        // Also allow group members to summarize public/group resources?
+        // For now, keep it simple: owner can summarize.
+      }
+
+      // In a real app, we'd extract text from the file/URL.
+      // Since this is a restricted environment, we'll use the description or a mock content.
+      const contentToSummarize = resource.description || `Resource content for ${resource.title}`;
+      const summary = await summarizeResource(contentToSummarize, resource.title);
+
+      const updated = await storage.updateResource(id, resource.userId!, { aiSummary: summary });
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to generate AI summary" });
+    }
+  });
+
+  app.get("/api/users/me/readiness", requireAuth, async (req, res) => {
+    try {
+      const user = await storage.getUserById(req.session.userId!);
+      if (!user) return res.status(404).json({ message: "User not found" });
+
+      const readinessScore = await calculateReadinessScore({
+        streakCount: user.streakCount,
+        totalStudyMinutes: user.totalStudyMinutes,
+        productivityScore: user.productivityScore
+      });
+
+      if (readinessScore !== user.readinessScore) {
+        await storage.updateUser(user.id, { readinessScore });
+      }
+
+      res.json({ readinessScore });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to calculate readiness" });
+    }
+  });
+
+  app.post("/api/ai/chat", requireAuth, async (req, res) => {
+    try {
+      const { message, history } = req.body;
+      const tasks = await storage.getTasks(req.session.userId!);
+      const subjects = await storage.getSubjects(req.session.userId!);
+
+      const response = await chatWithAI(message, history || [], { subjects, tasks });
+      res.json({ message: response });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to reach StudyBuddy" });
+    }
+  });
+
+  app.post("/api/resources/:id/quiz", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(String(req.params.id));
+      const { count, type } = req.body;
+      const resource = await storage.getResource(id);
+      if (!resource) return res.status(404).json({ message: "Resource not found" });
+
+      const content = resource.description || `Study material for ${resource.title}`;
+      const quiz = await generateQuiz(content, resource.title, { count, type });
+      res.json(quiz);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to generate AI quiz" });
+    }
+  });
+
+  app.get("/api/analytics/insights", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const sessions = await storage.getPomodoroSessions(userId);
+      const tasks = await storage.getTasks(userId);
+      const subjects = await storage.getSubjects(userId);
+
+      // 1. Calculate productive hour
+      const hourCounts: Record<number, number> = {};
+      sessions.forEach(s => {
+        const hour = new Date(s.completedAt).getHours();
+        hourCounts[hour] = (hourCounts[hour] || 0) + 1;
+      });
+      let bestHour = -1;
+      let maxCount = 0;
+      Object.entries(hourCounts).forEach(([hour, count]) => {
+        if (count > maxCount) {
+          maxCount = count;
+          bestHour = parseInt(hour);
+        }
+      });
+
+      // 2. Calculate weakest subject
+      let weakestSubject = null;
+      let lowestRate = 1.1;
+
+      for (const sub of subjects) {
+        const subTasks = tasks.filter(t => t.subjectId === sub.id);
+        if (subTasks.length > 0) {
+          const rate = subTasks.filter(t => t.status === "completed").length / subTasks.length;
+          if (rate < lowestRate) {
+            lowestRate = rate;
+            weakestSubject = sub.name;
+          }
+        }
+      }
+
+      // 3. Simple heuristic recommendation
+      let recommendation = "Keep maintaining your study streak!";
+      if (sessions.length < 3) recommendation = "Try setting a 25-minute Pomodoro timer today to build focus habits.";
+      else if (lowestRate < 0.3 && weakestSubject) recommendation = `Your progress in ${weakestSubject} is a bit slow. Try prioritizing it in your next session.`;
+      else if (bestHour !== -1) recommendation = `You're most productive around ${bestHour % 12 || 12}${bestHour >= 12 ? 'PM' : 'AM'}. Schedule your hardest tasks then!`;
+
+      res.json({
+        mostProductiveHour: bestHour === -1 ? null : bestHour,
+        weakestSubject,
+        recommendation
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch insights" });
+    }
   });
 
   return httpServer;

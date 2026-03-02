@@ -10,6 +10,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { useAuth } from "@/hooks/use-auth";
 import { Skeleton } from "@/components/ui/skeleton";
 import NotFound from "@/pages/not-found";
+import LandingPage from "@/pages/landing";
 import AuthPage from "@/pages/auth";
 import Dashboard from "@/pages/dashboard";
 import SubjectsPage from "@/pages/subjects";
@@ -58,6 +59,16 @@ function AuthenticatedApp() {
   );
 }
 
+function UnauthenticatedApp() {
+  return (
+    <Switch>
+      <Route path="/" component={LandingPage} />
+      <Route path="/auth" component={AuthPage} />
+      <Route component={LandingPage} />
+    </Switch>
+  );
+}
+
 function AppContent() {
   const { isAuthenticated, isLoading } = useAuth();
 
@@ -73,7 +84,7 @@ function AppContent() {
   }
 
   if (!isAuthenticated) {
-    return <AuthPage />;
+    return <UnauthenticatedApp />;
   }
 
   return <AuthenticatedApp />;

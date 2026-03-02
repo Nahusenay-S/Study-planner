@@ -23,6 +23,7 @@ client/src/
     constants.ts         - Shared constants (PRIORITIES, STATUSES, SUBJECT_COLORS, SUBJECT_ICONS)
     queryClient.ts       - TanStack Query client config
   pages/
+    landing.tsx          - Public landing page with animated hero, features, stats, CTA
     auth.tsx             - Login/Register page with gradient hero section
     dashboard.tsx        - Overview with staggered stats, deadlines, heatmap, progress
     subjects.tsx         - CRUD with colors, icons, difficulty dots, scale-in animations
@@ -31,7 +32,7 @@ client/src/
     pomodoro.tsx         - Timer with pulsing glow effect, circular progress
     analytics.tsx        - Charts with stagger animations
     profile.tsx          - Profile with gradient shimmer, circular productivity score ring, heatmap
-  App.tsx                - Root layout with auth gating
+  App.tsx                - Root layout with auth gating + public routes (landing, auth)
 shared/
   schema.ts              - Drizzle schema + Zod validation schemas
 server/

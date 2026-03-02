@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { Link, useSearch } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,7 +37,14 @@ const stats = [
 ];
 
 export default function AuthPage() {
-  const [isLogin, setIsLogin] = useState(true);
+  const search = useSearch();
+  const searchParams = new URLSearchParams(search);
+  const [isLogin, setIsLogin] = useState(searchParams.get("mode") !== "register");
+
+  useEffect(() => {
+    const params = new URLSearchParams(search);
+    setIsLogin(params.get("mode") !== "register");
+  }, [search]);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [username, setUsername] = useState("");
@@ -92,15 +100,17 @@ export default function AuthPage() {
         </div>
 
         <div className="relative z-10 text-white max-w-md animate-fade-in">
-          <div className="flex items-center gap-3.5 mb-12">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 shadow-lg shadow-blue-500/25">
-              <GraduationCap className="h-7 w-7" />
+          <Link href="/">
+            <div className="flex items-center gap-3.5 mb-12 cursor-pointer group">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 shadow-lg shadow-blue-500/25 group-hover:scale-105 transition-transform">
+                <GraduationCap className="h-7 w-7" />
+              </div>
+              <div>
+                <h1 className="text-3xl font-bold tracking-tight">StudyFlow</h1>
+                <p className="text-xs text-blue-300/70 font-medium tracking-widest uppercase mt-0.5">Plan. Focus. Achieve.</p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-3xl font-bold tracking-tight">StudyFlow</h1>
-              <p className="text-xs text-blue-300/70 font-medium tracking-widest uppercase mt-0.5">Plan. Focus. Achieve.</p>
-            </div>
-          </div>
+          </Link>
 
           <h2 className="text-[2.5rem] font-extrabold mb-5 leading-[1.15] tracking-tight">
             Study smarter,
@@ -144,15 +154,17 @@ export default function AuthPage() {
           <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-blue-950 to-indigo-950" />
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(59,130,246,0.15)_0%,transparent_60%)]" />
           <div className="relative z-10 px-6 pt-12 pb-10 text-white text-center">
-            <div className="flex items-center gap-2.5 justify-center mb-5">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 shadow-lg shadow-blue-500/25">
-                <GraduationCap className="h-6 w-6" />
+            <Link href="/">
+              <div className="flex items-center gap-2.5 justify-center mb-5 cursor-pointer">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 shadow-lg shadow-blue-500/25">
+                  <GraduationCap className="h-6 w-6" />
+                </div>
+                <div className="text-left">
+                  <h1 className="text-2xl font-bold tracking-tight">StudyFlow</h1>
+                  <p className="text-[10px] text-blue-300/60 uppercase tracking-widest font-medium">Plan. Focus. Achieve.</p>
+                </div>
               </div>
-              <div className="text-left">
-                <h1 className="text-2xl font-bold tracking-tight">StudyFlow</h1>
-                <p className="text-[10px] text-blue-300/60 uppercase tracking-widest font-medium">Plan. Focus. Achieve.</p>
-              </div>
-            </div>
+            </Link>
             <h2 className="text-2xl font-extrabold mb-2">
               Study smarter,{" "}
               <span className="bg-gradient-to-r from-blue-400 to-cyan-300 bg-clip-text text-transparent">

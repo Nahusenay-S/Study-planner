@@ -12,9 +12,12 @@ import {
   TrendingUp,
   ListTodo,
   Target,
+  Flame,
+  Trophy,
+  Zap,
 } from "lucide-react";
+import { useAuth } from "@/hooks/use-auth";
 import type { Subject, Task, PomodoroSession } from "@shared/schema";
-import { Link } from "wouter";
 
 function StatCard({
   title,
@@ -51,6 +54,47 @@ function StatCard({
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function MiniHeatmap({ sessions }: { sessions: PomodoroSession[] }) {
+  const today = new Date();
+  const days: { date: string; count: number }[] = [];
+  for (let i = 13 * 7 - 1; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    const dateStr = d.toISOString().split("T")[0];
+    const count = sessions.filter((s) => s.completedAt.startsWith(dateStr)).length;
+    days.push({ date: dateStr, count });
+  }
+
+  const getIntensity = (count: number) => {
+    if (count === 0) return "bg-muted/50";
+    if (count === 1) return "bg-green-500/30";
+    if (count === 2) return "bg-green-500/50";
+    if (count <= 4) return "bg-green-500/70";
+    return "bg-green-500";
+  };
+
+  const weekColumns: typeof days[] = [];
+  for (let i = 0; i < days.length; i += 7) {
+    weekColumns.push(days.slice(i, i + 7));
+  }
+
+  return (
+    <div className="flex gap-[2px] overflow-x-auto pb-1">
+      {weekColumns.map((week, wi) => (
+        <div key={wi} className="flex flex-col gap-[2px]">
+          {week.map((day) => (
+            <div
+              key={day.date}
+              className={`h-2.5 w-2.5 rounded-sm ${getIntensity(day.count)}`}
+              title={`${day.date}: ${day.count} sessions`}
+            />
+          ))}
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -141,7 +185,12 @@ function SubjectProgress({ subjects, tasks }: { subjects: Subject[]; tasks: Task
                 {completed}/{total}
               </span>
             </div>
-            <Progress value={pct} className="h-2" />
+            <div className="h-2 w-full rounded-full bg-secondary overflow-hidden">
+              <div
+                className="h-full rounded-full transition-all duration-500"
+                style={{ width: `${pct}%`, backgroundColor: subject.color }}
+              />
+            </div>
           </div>
         );
       })}
@@ -161,9 +210,7 @@ function RecentActivity({ tasks, subjects }: { tasks: Task[]; subjects: Subject[
     .filter((t) => t.status === "completed" && t.completedAt)
     .sort((a, b) => (b.completedAt || "").localeCompare(a.completedAt || ""))
     .slice(0, 4);
-
   const inProgress = tasks.filter((t) => t.status === "in-progress").slice(0, 4);
-
   const combined = [
     ...inProgress.map((t) => ({ ...t, type: "in-progress" as const })),
     ...recentCompleted.map((t) => ({ ...t, type: "completed" as const })),
@@ -210,6 +257,7 @@ function RecentActivity({ tasks, subjects }: { tasks: Task[]; subjects: Subject[
 }
 
 export default function Dashboard() {
+  const { user } = useAuth();
   const { data: subjects = [], isLoading: loadingSubjects } = useQuery<Subject[]>({
     queryKey: ["/api/subjects"],
   });
@@ -234,35 +282,42 @@ export default function Dashboard() {
   if (isLoading) {
     return (
       <div className="p-6 space-y-6">
+        <Skeleton className="h-20 w-full" />
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {[...Array(4)].map((_, i) => (
-            <Card key={i}>
-              <CardContent className="p-5">
-                <Skeleton className="h-16 w-full" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {[...Array(3)].map((_, i) => (
-            <Card key={i}>
-              <CardContent className="p-5">
-                <Skeleton className="h-40 w-full" />
-              </CardContent>
-            </Card>
+            <Card key={i}><CardContent className="p-5"><Skeleton className="h-16 w-full" /></CardContent></Card>
           ))}
         </div>
       </div>
     );
   }
 
+  const greeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return "Good morning";
+    if (hour < 17) return "Good afternoon";
+    return "Good evening";
+  };
+
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
-      <div>
-        <h1 className="text-2xl font-bold" data-testid="text-dashboard-title">Dashboard</h1>
-        <p className="text-muted-foreground text-sm mt-1">
-          Track your study progress and stay on top of deadlines.
-        </p>
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-bold" data-testid="text-dashboard-title">
+            {greeting()}, {user?.displayName || user?.username || "Student"}
+          </h1>
+          <p className="text-muted-foreground text-sm mt-1">
+            Track your study progress and stay on top of deadlines.
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          {user && user.streakCount > 0 && (
+            <Badge variant="secondary" className="gap-1">
+              <Flame className="h-3 w-3 text-orange-500" />
+              {user.streakCount} day streak
+            </Badge>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -333,6 +388,18 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Zap className="h-4 w-4 text-muted-foreground" />
+            Study Activity
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <MiniHeatmap sessions={sessions} />
+        </CardContent>
+      </Card>
     </div>
   );
 }

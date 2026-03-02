@@ -186,6 +186,7 @@ function TaskForm({
           <SelectContent>
             <SelectItem value="todo">To Do</SelectItem>
             <SelectItem value="in-progress">In Progress</SelectItem>
+            <SelectItem value="review">Review</SelectItem>
             <SelectItem value="completed">Completed</SelectItem>
           </SelectContent>
         </Select>

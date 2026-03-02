@@ -1,45 +1,65 @@
-# StudyFlow - Student Study Planner Dashboard
+# StudyFlow - SaaS Study Planner Platform
 
 ## Overview
-A full-stack student study planner with subjects, tasks, deadlines, progress tracking, Pomodoro timer, dark mode, and analytics.
+A professional SaaS-level student study planner with authentication, subjects, tasks, Kanban board, Pomodoro timer, analytics, profile page with heatmap calendar, dark mode, streaks, and productivity scoring.
 
 ## Tech Stack
-- **Frontend**: React + TypeScript, Vite, TailwindCSS, shadcn/ui, Recharts, wouter routing
-- **Backend**: Express.js (Node.js)
+- **Frontend**: React + TypeScript, Vite, TailwindCSS, shadcn/ui, Recharts, wouter, @hello-pangea/dnd
+- **Backend**: Express.js with express-session, bcryptjs, connect-pg-simple
 - **Database**: PostgreSQL (Drizzle ORM)
 - **State Management**: TanStack React Query
+- **Auth**: Session-based with bcrypt password hashing
 
 ## Structure
 ```
 client/src/
   components/
-    app-sidebar.tsx      - Sidebar navigation
+    app-sidebar.tsx      - Sidebar with nav + user info + logout
     theme-provider.tsx   - Dark/light mode context
     theme-toggle.tsx     - Theme toggle button
+  hooks/
+    use-auth.ts          - Authentication hook (login/register/logout)
   pages/
-    dashboard.tsx        - Overview with stats, deadlines, progress
-    subjects.tsx         - CRUD for study subjects
-    tasks.tsx            - CRUD for tasks with filtering/tabs
+    auth.tsx             - Login/Register page with hero section
+    dashboard.tsx        - Overview with stats, deadlines, heatmap, progress
+    subjects.tsx         - CRUD for study subjects with colors, icons, difficulty
+    tasks.tsx            - CRUD for tasks with filtering/tabs/status
+    kanban.tsx           - Drag & drop Kanban board (Backlog/In Progress/Review/Completed)
     pomodoro.tsx         - Pomodoro timer with session tracking
     analytics.tsx        - Charts and study analytics
-  App.tsx                - Root layout with sidebar
+    profile.tsx          - User profile, heatmap calendar, subject performance, edit profile
+  App.tsx                - Root layout with auth gating
 shared/
-  schema.ts              - Drizzle schema (subjects, tasks, pomodoro_sessions)
+  schema.ts              - Drizzle schema (users, subjects, tasks, pomodoro_sessions)
 server/
-  routes.ts              - REST API endpoints
+  routes.ts              - Auth + REST API endpoints
   storage.ts             - Database storage layer
 ```
 
 ## Database Tables
-- `subjects` - Study subjects (name, color, icon)
-- `tasks` - Tasks (title, description, subjectId, priority, status, deadline, estimatedMinutes)
-- `pomodoro_sessions` - Focus sessions (subjectId, taskId, duration, completedAt)
+- `users` - Auth + profile (username, email, password, displayName, streakCount, totalStudyMinutes, productivityScore)
+- `subjects` - Study subjects (userId, name, color, icon, difficultyLevel)
+- `tasks` - Tasks (userId, title, description, subjectId, priority, status, deadline, estimatedMinutes, kanbanOrder)
+- `pomodoro_sessions` - Focus sessions (userId, subjectId, taskId, duration, completedAt)
 
 ## API Endpoints
+- `POST /api/auth/register` - Register new user
+- `POST /api/auth/login` - Login
+- `POST /api/auth/logout` - Logout
+- `GET /api/auth/me` - Get current user
+- `PATCH /api/auth/profile` - Update profile
 - `GET/POST /api/subjects`, `PATCH/DELETE /api/subjects/:id`
 - `GET/POST /api/tasks`, `PATCH/DELETE /api/tasks/:id`
 - `GET/POST /api/pomodoro-sessions`
 
-## Running
-- `npm run dev` starts both frontend and backend on port 5000
-- `npm run db:push` pushes schema changes to database
+## Features
+1. Full authentication (register/login/logout with bcrypt + sessions)
+2. Subject management with colors, icons, difficulty levels
+3. Smart task system with priorities, deadlines, status, estimated time
+4. Kanban board with drag & drop
+5. Pomodoro timer (Focus/Short Break/Long Break)
+6. Analytics with charts (area, bar, pie)
+7. Profile page with GitHub-style heatmap calendar
+8. Daily streak tracking
+9. Productivity scoring
+10. Dark/light mode toggle

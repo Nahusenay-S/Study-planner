@@ -145,7 +145,7 @@ export default function PomodoroPage() {
   }
 
   return (
-    <div className="p-6 space-y-6 max-w-4xl mx-auto">
+    <div className="p-6 space-y-6 max-w-4xl mx-auto animate-fade-in">
       <div>
         <h1 className="text-2xl font-bold" data-testid="text-pomodoro-title">Pomodoro Timer</h1>
         <p className="text-muted-foreground text-sm mt-1">
@@ -175,7 +175,10 @@ export default function PomodoroPage() {
               </div>
 
               <div className="flex flex-col items-center">
-                <div className="relative w-64 h-64 mb-8">
+                <div
+                  className={`relative w-64 h-64 mb-8 animate-scale-in rounded-full ${isRunning ? "animate-pulse-glow" : ""}`}
+                  style={isRunning ? { "--glow-color": `${modeConfig.color}40` } as React.CSSProperties : undefined}
+                >
                   <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
                     <circle
                       cx="50"
@@ -215,6 +218,7 @@ export default function PomodoroPage() {
                     size="lg"
                     onClick={toggleTimer}
                     data-testid="button-toggle-timer"
+                    aria-label={isRunning ? "Pause timer" : "Start timer"}
                     style={{
                       backgroundColor: modeConfig.color,
                       borderColor: modeConfig.color,
@@ -236,6 +240,7 @@ export default function PomodoroPage() {
                     variant="outline"
                     onClick={resetTimer}
                     data-testid="button-reset-timer"
+                    aria-label="Reset timer"
                   >
                     <RotateCcw className="h-4 w-4" />
                   </Button>

@@ -133,7 +133,7 @@ export default function AnalyticsPage() {
   });
 
   return (
-    <div className="p-6 space-y-6 max-w-6xl mx-auto">
+    <div className="p-6 space-y-6 max-w-6xl mx-auto animate-fade-in">
       <div>
         <h1 className="text-2xl font-bold" data-testid="text-analytics-title">Analytics</h1>
         <p className="text-muted-foreground text-sm mt-1">
@@ -142,7 +142,7 @@ export default function AnalyticsPage() {
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="hover-elevate">
+        <Card className="hover-elevate animate-fade-in stagger-1">
           <CardContent className="p-4 text-center">
             <Target className="h-5 w-5 mx-auto mb-2 text-muted-foreground" />
             <p className="text-2xl font-bold" data-testid="stat-completion-rate">
@@ -151,7 +151,7 @@ export default function AnalyticsPage() {
             <p className="text-xs text-muted-foreground">Completion Rate</p>
           </CardContent>
         </Card>
-        <Card className="hover-elevate">
+        <Card className="hover-elevate animate-fade-in stagger-2">
           <CardContent className="p-4 text-center">
             <Clock className="h-5 w-5 mx-auto mb-2 text-muted-foreground" />
             <p className="text-2xl font-bold" data-testid="stat-total-focus">
@@ -160,7 +160,7 @@ export default function AnalyticsPage() {
             <p className="text-xs text-muted-foreground">Total Focus</p>
           </CardContent>
         </Card>
-        <Card className="hover-elevate">
+        <Card className="hover-elevate animate-fade-in stagger-3">
           <CardContent className="p-4 text-center">
             <BarChart3 className="h-5 w-5 mx-auto mb-2 text-muted-foreground" />
             <p className="text-2xl font-bold" data-testid="stat-total-sessions">
@@ -169,7 +169,7 @@ export default function AnalyticsPage() {
             <p className="text-xs text-muted-foreground">Total Sessions</p>
           </CardContent>
         </Card>
-        <Card className="hover-elevate">
+        <Card className="hover-elevate animate-fade-in stagger-4">
           <CardContent className="p-4 text-center">
             <TrendingUp className="h-5 w-5 mx-auto mb-2 text-muted-foreground" />
             <p className="text-2xl font-bold" data-testid="stat-avg-session">
@@ -181,7 +181,7 @@ export default function AnalyticsPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card>
+        <Card className="animate-scale-in" style={{ animationDelay: "0.1s", opacity: 0 }}>
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
               <Calendar className="h-4 w-4 text-muted-foreground" />
@@ -221,7 +221,7 @@ export default function AnalyticsPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="animate-scale-in" style={{ animationDelay: "0.15s", opacity: 0 }}>
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
               <BookOpen className="h-4 w-4 text-muted-foreground" />
@@ -257,7 +257,7 @@ export default function AnalyticsPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="animate-scale-in" style={{ animationDelay: "0.2s", opacity: 0 }}>
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
               <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
@@ -309,7 +309,7 @@ export default function AnalyticsPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="animate-scale-in" style={{ animationDelay: "0.25s", opacity: 0 }}>
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
               <TrendingUp className="h-4 w-4 text-muted-foreground" />

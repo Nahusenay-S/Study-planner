@@ -11,7 +11,6 @@ import {
   User,
   Flame,
   Clock,
-  Trophy,
   Target,
   BookOpen,
   CheckCircle2,
@@ -164,9 +163,9 @@ export default function ProfilePage() {
   ));
 
   return (
-    <div className="p-6 space-y-6 max-w-4xl mx-auto">
+    <div className="p-6 space-y-6 max-w-4xl mx-auto animate-fade-in">
       <Card>
-        <CardContent className="p-6">
+        <CardContent className="p-6 bg-gradient-to-r from-blue-500/5 via-purple-500/5 to-indigo-500/5 rounded-lg">
           <div className="flex items-start gap-6 flex-wrap">
             <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 to-purple-600 text-white text-2xl font-bold shrink-0">
               {initials}
@@ -182,10 +181,39 @@ export default function ProfilePage() {
                   <Flame className="h-3 w-3 mr-1" />
                   {user.streakCount} day streak
                 </Badge>
-                <Badge variant="secondary">
-                  <Trophy className="h-3 w-3 mr-1" />
-                  Score: {productivityScore}
-                </Badge>
+                <div className="flex items-center gap-2">
+                  <div className="relative" style={{ width: 60, height: 60 }}>
+                    <svg className="w-full h-full -rotate-90" viewBox="0 0 60 60">
+                      <circle
+                        cx="30"
+                        cy="30"
+                        r="25"
+                        fill="none"
+                        stroke="hsl(var(--muted))"
+                        strokeWidth="4"
+                      />
+                      <circle
+                        cx="30"
+                        cy="30"
+                        r="25"
+                        fill="none"
+                        stroke="#8B5CF6"
+                        strokeWidth="4"
+                        strokeLinecap="round"
+                        strokeDasharray={`${2 * Math.PI * 25}`}
+                        strokeDashoffset={`${2 * Math.PI * 25 * (1 - productivityScore / 100)}`}
+                        className="transition-all duration-1000"
+                      />
+                    </svg>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center">
+                      <span className="text-xs font-bold" data-testid="text-productivity-score">{productivityScore}</span>
+                    </div>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-xs font-medium">Productivity</span>
+                    <span className="text-xs text-muted-foreground">Score</span>
+                  </div>
+                </div>
                 <Badge variant="secondary">
                   <Calendar className="h-3 w-3 mr-1" />
                   Joined {user.createdAt ? new Date(user.createdAt).toLocaleDateString("en-US", { month: "short", year: "numeric" }) : "Recently"}
@@ -197,10 +225,18 @@ export default function ProfilePage() {
       </Card>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatBadge icon={Flame} label="Day Streak" value={user.streakCount} color="#EF4444" />
-        <StatBadge icon={Clock} label="Study Time" value={`${hours}h ${mins}m`} color="#3B82F6" />
-        <StatBadge icon={Target} label="Completion" value={`${completionRate}%`} color="#10B981" />
-        <StatBadge icon={Zap} label="Sessions" value={sessions.length} color="#8B5CF6" />
+        <div className="animate-scale-in" style={{ animationDelay: "0.05s", opacity: 0 }}>
+          <StatBadge icon={Flame} label="Day Streak" value={user.streakCount} color="#EF4444" />
+        </div>
+        <div className="animate-scale-in" style={{ animationDelay: "0.1s", opacity: 0 }}>
+          <StatBadge icon={Clock} label="Study Time" value={`${hours}h ${mins}m`} color="#3B82F6" />
+        </div>
+        <div className="animate-scale-in" style={{ animationDelay: "0.15s", opacity: 0 }}>
+          <StatBadge icon={Target} label="Completion" value={`${completionRate}%`} color="#10B981" />
+        </div>
+        <div className="animate-scale-in" style={{ animationDelay: "0.2s", opacity: 0 }}>
+          <StatBadge icon={Zap} label="Sessions" value={sessions.length} color="#8B5CF6" />
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

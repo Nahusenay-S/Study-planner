@@ -28,29 +28,15 @@ import {
   Plus,
   CheckCircle2,
   Clock,
-  AlertCircle,
+  Pencil,
   Calendar,
   Trash2,
   ListTodo,
-  ArrowUpCircle,
-  ArrowRightCircle,
-  ArrowDownCircle,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { PRIORITIES } from "@/lib/constants";
 import type { Subject, Task } from "@shared/schema";
-
-const PRIORITY_CONFIG = {
-  high: { label: "High", icon: ArrowUpCircle, className: "text-red-500" },
-  medium: { label: "Medium", icon: ArrowRightCircle, className: "text-yellow-500" },
-  low: { label: "Low", icon: ArrowDownCircle, className: "text-green-500" },
-};
-
-const STATUS_CONFIG = {
-  todo: { label: "To Do", color: "bg-muted" },
-  "in-progress": { label: "In Progress", color: "bg-blue-500/10" },
-  completed: { label: "Done", color: "bg-green-500/10" },
-};
 
 function TaskForm({
   task,
@@ -242,7 +228,7 @@ function TaskCard({
   onToggle: () => void;
   onDelete: () => void;
 }) {
-  const priority = PRIORITY_CONFIG[task.priority as keyof typeof PRIORITY_CONFIG] || PRIORITY_CONFIG.medium;
+  const priority = PRIORITIES[task.priority as keyof typeof PRIORITIES] || PRIORITIES.medium;
   const PriorityIcon = priority.icon;
   const deadline = task.deadline ? new Date(task.deadline) : null;
   const today = new Date();
@@ -252,7 +238,7 @@ function TaskCard({
 
   return (
     <div
-      className={`flex items-start gap-3 rounded-md border p-4 transition-colors ${
+      className={`flex items-start gap-3 rounded-md border p-4 transition-all duration-200 hover:border-primary/30 ${
         task.status === "completed" ? "opacity-60" : ""
       }`}
       data-testid={`card-task-${task.id}`}
@@ -303,10 +289,10 @@ function TaskCard({
         </div>
       </div>
       <div className="flex items-center gap-1 shrink-0">
-        <Button size="icon" variant="ghost" onClick={onEdit} data-testid={`button-edit-task-${task.id}`}>
-          <AlertCircle className="h-3.5 w-3.5" />
+        <Button size="icon" variant="ghost" onClick={onEdit} aria-label="Edit task" data-testid={`button-edit-task-${task.id}`}>
+          <Pencil className="h-3.5 w-3.5" />
         </Button>
-        <Button size="icon" variant="ghost" onClick={onDelete} data-testid={`button-delete-task-${task.id}`}>
+        <Button size="icon" variant="ghost" onClick={onDelete} aria-label="Delete task" data-testid={`button-delete-task-${task.id}`}>
           <Trash2 className="h-3.5 w-3.5" />
         </Button>
       </div>
@@ -410,7 +396,7 @@ export default function TasksPage() {
   }
 
   return (
-    <div className="p-6 space-y-6 max-w-5xl mx-auto">
+    <div className="p-6 space-y-6 max-w-5xl mx-auto animate-fade-in">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold" data-testid="text-tasks-title">Tasks</h1>

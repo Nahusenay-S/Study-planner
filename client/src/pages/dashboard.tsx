@@ -46,8 +46,11 @@ function StatCard({
             )}
           </div>
           <div
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md"
-            style={{ backgroundColor: `${color}20`, color }}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-gradient-to-br"
+            style={{
+              backgroundImage: `linear-gradient(to bottom right, ${color}15, ${color}30)`,
+              color,
+            }}
           >
             <Icon className="h-5 w-5" />
           </div>
@@ -300,14 +303,16 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl mx-auto">
+    <div className="p-6 space-y-6 max-w-7xl mx-auto animate-fade-in">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold" data-testid="text-dashboard-title">
             {greeting()}, {user?.displayName || user?.username || "Student"}
           </h1>
           <p className="text-muted-foreground text-sm mt-1">
-            Track your study progress and stay on top of deadlines.
+            {user && user.streakCount > 0
+              ? <span className="inline-flex items-center gap-1"><Flame className="h-3.5 w-3.5 text-orange-500" /> {user.streakCount} day streak — keep the momentum going!</span>
+              : "Track your study progress and stay on top of deadlines."}
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -321,34 +326,42 @@ export default function Dashboard() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard
-          title="Total Tasks"
-          value={totalTasks}
-          subtitle={`${completedTasks} completed`}
-          icon={ListTodo}
-          color="#3B82F6"
-        />
-        <StatCard
-          title="Completion Rate"
-          value={`${completionRate}%`}
-          subtitle={`${totalTasks - completedTasks} remaining`}
-          icon={Target}
-          color="#10B981"
-        />
-        <StatCard
-          title="Focus Time"
-          value={`${Math.floor(totalFocusMinutes / 60)}h ${totalFocusMinutes % 60}m`}
-          subtitle={`${sessions.length} sessions`}
-          icon={Timer}
-          color="#8B5CF6"
-        />
-        <StatCard
-          title="Overdue"
-          value={overdueTasks}
-          subtitle={overdueTasks > 0 ? "Needs attention" : "All on track"}
-          icon={AlertTriangle}
-          color={overdueTasks > 0 ? "#EF4444" : "#10B981"}
-        />
+        <div className="animate-fade-in stagger-1">
+          <StatCard
+            title="Total Tasks"
+            value={totalTasks}
+            subtitle={`${completedTasks} completed`}
+            icon={ListTodo}
+            color="#3B82F6"
+          />
+        </div>
+        <div className="animate-fade-in stagger-2">
+          <StatCard
+            title="Completion Rate"
+            value={`${completionRate}%`}
+            subtitle={`${totalTasks - completedTasks} remaining`}
+            icon={Target}
+            color="#10B981"
+          />
+        </div>
+        <div className="animate-fade-in stagger-3">
+          <StatCard
+            title="Focus Time"
+            value={`${Math.floor(totalFocusMinutes / 60)}h ${totalFocusMinutes % 60}m`}
+            subtitle={`${sessions.length} sessions`}
+            icon={Timer}
+            color="#8B5CF6"
+          />
+        </div>
+        <div className="animate-fade-in stagger-4">
+          <StatCard
+            title="Overdue"
+            value={overdueTasks}
+            subtitle={overdueTasks > 0 ? "Needs attention" : "All on track"}
+            icon={AlertTriangle}
+            color={overdueTasks > 0 ? "#EF4444" : "#10B981"}
+          />
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -389,7 +402,7 @@ export default function Dashboard() {
         </Card>
       </div>
 
-      <Card>
+      <Card className="bg-gradient-to-r from-green-500/5 to-emerald-500/5">
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
             <Zap className="h-4 w-4 text-muted-foreground" />

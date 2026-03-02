@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -6,29 +6,20 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  ArrowUpCircle,
-  ArrowRightCircle,
-  ArrowDownCircle,
   Calendar,
   Clock,
-  Plus,
   GripVertical,
 } from "lucide-react";
+import { PRIORITIES, STATUSES } from "@/lib/constants";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { Subject, Task } from "@shared/schema";
 
 const KANBAN_COLUMNS = [
-  { id: "todo", title: "Backlog", color: "#64748B" },
-  { id: "in-progress", title: "In Progress", color: "#3B82F6" },
-  { id: "review", title: "Review", color: "#F59E0B" },
-  { id: "completed", title: "Completed", color: "#10B981" },
+  { id: "todo" as const, title: "Backlog" },
+  { id: "in-progress" as const, title: "In Progress" },
+  { id: "review" as const, title: "Review" },
+  { id: "completed" as const, title: "Completed" },
 ];
-
-const PRIORITY_ICONS: Record<string, { icon: React.ElementType; className: string }> = {
-  high: { icon: ArrowUpCircle, className: "text-red-500" },
-  medium: { icon: ArrowRightCircle, className: "text-yellow-500" },
-  low: { icon: ArrowDownCircle, className: "text-green-500" },
-};
 
 export default function KanbanPage() {
   const { data: tasks = [], isLoading: loadingTasks } = useQuery<Task[]>({
@@ -41,9 +32,9 @@ export default function KanbanPage() {
   const subjectMap = new Map(subjects.map((s) => [s.id, s]));
 
   const updateMutation = useMutation({
-    mutationFn: async ({ id, status }: { id: number; status: string }) => {
+    mutationFn: async ({ id, status, kanbanOrder }: { id: number; status: string; kanbanOrder: number }) => {
       const completedAt = status === "completed" ? new Date().toISOString() : null;
-      const res = await apiRequest("PATCH", `/api/tasks/${id}`, { status, completedAt });
+      const res = await apiRequest("PATCH", `/api/tasks/${id}`, { status, completedAt, kanbanOrder });
       return res.json();
     },
     onSuccess: () => {
@@ -55,11 +46,32 @@ export default function KanbanPage() {
     if (!result.destination) return;
     const taskId = parseInt(result.draggableId);
     const newStatus = result.destination.droppableId;
-    updateMutation.mutate({ id: taskId, status: newStatus });
-  }, [updateMutation]);
+    const destinationIndex = result.destination.index;
+
+    const destTasks = tasks
+      .filter((t) => t.status === newStatus && t.id !== taskId)
+      .sort((a, b) => (a.kanbanOrder ?? 0) - (b.kanbanOrder ?? 0));
+
+    let newOrder: number;
+    if (destTasks.length === 0) {
+      newOrder = 1000;
+    } else if (destinationIndex === 0) {
+      newOrder = (destTasks[0].kanbanOrder ?? 0) - 1000;
+    } else if (destinationIndex >= destTasks.length) {
+      newOrder = (destTasks[destTasks.length - 1].kanbanOrder ?? 0) + 1000;
+    } else {
+      const before = destTasks[destinationIndex - 1].kanbanOrder ?? 0;
+      const after = destTasks[destinationIndex].kanbanOrder ?? 0;
+      newOrder = Math.round((before + after) / 2);
+    }
+
+    updateMutation.mutate({ id: taskId, status: newStatus, kanbanOrder: newOrder });
+  }, [updateMutation, tasks]);
 
   const getColumnTasks = (columnId: string) => {
-    return tasks.filter((t) => t.status === columnId);
+    return tasks
+      .filter((t) => t.status === columnId)
+      .sort((a, b) => (a.kanbanOrder ?? 0) - (b.kanbanOrder ?? 0));
   };
 
   if (loadingTasks) {
@@ -76,7 +88,7 @@ export default function KanbanPage() {
   }
 
   return (
-    <div className="p-6 space-y-6 h-full">
+    <div className="p-6 space-y-6 h-full animate-fade-in">
       <div>
         <h1 className="text-2xl font-bold" data-testid="text-kanban-title">Kanban Board</h1>
         <p className="text-muted-foreground text-sm mt-1">
@@ -86,17 +98,23 @@ export default function KanbanPage() {
 
       <DragDropContext onDragEnd={onDragEnd}>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 min-h-[60vh]">
-          {KANBAN_COLUMNS.map((column) => {
+          {KANBAN_COLUMNS.map((column, colIndex) => {
             const columnTasks = getColumnTasks(column.id);
+            const statusCfg = STATUSES[column.id];
             return (
               <div key={column.id} className="flex flex-col">
-                <div className="flex items-center gap-2 mb-3 px-1">
+                <div className="flex items-center gap-2 mb-3 px-1 animate-slide-in" style={{ animationDelay: `${colIndex * 0.05}s`, opacity: 0 }}>
                   <div
                     className="h-2.5 w-2.5 rounded-full"
-                    style={{ backgroundColor: column.color }}
+                    style={{ backgroundColor: statusCfg.color }}
                   />
                   <h3 className="text-sm font-semibold">{column.title}</h3>
-                  <Badge variant="secondary" className="ml-auto">
+                  <Badge
+                    variant="secondary"
+                    className="ml-auto"
+                    style={{ backgroundColor: `${statusCfg.color}15`, color: statusCfg.color }}
+                    data-testid={`badge-column-count-${column.id}`}
+                  >
                     {columnTasks.length}
                   </Badge>
                 </div>
@@ -114,7 +132,8 @@ export default function KanbanPage() {
                     >
                       {columnTasks.map((task, index) => {
                         const subject = subjectMap.get(task.subjectId);
-                        const priorityCfg = PRIORITY_ICONS[task.priority] || PRIORITY_ICONS.medium;
+                        const priorityKey = (task.priority as keyof typeof PRIORITIES) || "medium";
+                        const priorityCfg = PRIORITIES[priorityKey] || PRIORITIES.medium;
                         const PriorityIcon = priorityCfg.icon;
                         const deadline = task.deadline ? new Date(task.deadline) : null;
 
@@ -128,7 +147,7 @@ export default function KanbanPage() {
                               <div
                                 ref={provided.innerRef}
                                 {...provided.draggableProps}
-                                className={`rounded-md border bg-card p-3 space-y-2 ${
+                                className={`rounded-md border bg-card p-3 space-y-2 transition-all duration-200 ${
                                   snapshot.isDragging ? "shadow-lg ring-2 ring-primary/20" : ""
                                 }`}
                                 data-testid={`kanban-task-${task.id}`}

@@ -24,47 +24,13 @@ import {
 import {
   Plus,
   BookOpen,
-  Calculator,
-  Code,
-  Atom,
-  Clock,
   Pencil,
   Trash2,
-  GraduationCap,
-  Beaker,
-  Globe,
-  Music,
-  Palette,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { SUBJECT_COLORS, SUBJECT_ICONS } from "@/lib/constants";
 import type { Subject, Task } from "@shared/schema";
-
-const SUBJECT_ICONS: Record<string, React.ElementType> = {
-  BookOpen,
-  Calculator,
-  Code,
-  Atom,
-  Clock,
-  GraduationCap,
-  Beaker,
-  Globe,
-  Music,
-  Palette,
-};
-
-const SUBJECT_COLORS = [
-  "#3B82F6",
-  "#8B5CF6",
-  "#10B981",
-  "#F59E0B",
-  "#EF4444",
-  "#EC4899",
-  "#14B8A6",
-  "#F97316",
-  "#6366F1",
-  "#84CC16",
-];
 
 function SubjectForm({
   subject,
@@ -235,7 +201,7 @@ export default function SubjectsPage() {
   }
 
   return (
-    <div className="p-6 space-y-6 max-w-5xl mx-auto">
+    <div className="p-6 space-y-6 max-w-5xl mx-auto animate-fade-in">
       <div className="flex items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold" data-testid="text-subjects-title">Subjects</h1>
@@ -281,7 +247,7 @@ export default function SubjectsPage() {
         </Card>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {subjects.map((subject) => {
+          {subjects.map((subject, index) => {
             const IconComp = SUBJECT_ICONS[subject.icon] || BookOpen;
             const subjectTasks = tasks.filter((t) => t.subjectId === subject.id);
             const completed = subjectTasks.filter((t) => t.status === "completed").length;
@@ -289,7 +255,7 @@ export default function SubjectsPage() {
             const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
 
             return (
-              <Card key={subject.id} className="hover-elevate group" data-testid={`card-subject-${subject.id}`}>
+              <Card key={subject.id} className="hover-elevate group animate-scale-in opacity-0" style={{ animationDelay: `${index * 0.05}s` }} data-testid={`card-subject-${subject.id}`}>
                 <CardContent className="p-5">
                   <div className="flex items-start justify-between gap-2 mb-4">
                     <div className="flex items-center gap-3">
@@ -309,6 +275,7 @@ export default function SubjectsPage() {
                         size="icon"
                         variant="ghost"
                         onClick={() => openEdit(subject)}
+                        aria-label="Edit subject"
                         data-testid={`button-edit-subject-${subject.id}`}
                       >
                         <Pencil className="h-3.5 w-3.5" />
@@ -317,6 +284,7 @@ export default function SubjectsPage() {
                         size="icon"
                         variant="ghost"
                         onClick={() => deleteMutation.mutate(subject.id)}
+                        aria-label="Delete subject"
                         data-testid={`button-delete-subject-${subject.id}`}
                       >
                         <Trash2 className="h-3.5 w-3.5" />
@@ -338,6 +306,16 @@ export default function SubjectsPage() {
                       <span>{completed} done</span>
                       <span className="text-border">|</span>
                       <span>{total - completed} remaining</span>
+                    </div>
+                    <div className="flex items-center gap-1 mt-1" data-testid={`difficulty-${subject.id}`}>
+                      <span className="text-xs text-muted-foreground mr-1">Difficulty</span>
+                      {[1, 2, 3, 4, 5].map((level) => (
+                        <div
+                          key={level}
+                          className={`h-2 w-2 rounded-full ${level > (subject.difficultyLevel ?? 3) ? "bg-muted" : ""}`}
+                          style={level <= (subject.difficultyLevel ?? 3) ? { backgroundColor: subject.color } : undefined}
+                        />
+                      ))}
                     </div>
                   </div>
                 </CardContent>

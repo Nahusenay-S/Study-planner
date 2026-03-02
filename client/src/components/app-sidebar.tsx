@@ -72,7 +72,7 @@ export function AppSidebar() {
                   <SidebarMenuButton
                     asChild
                     data-active={location === item.url}
-                    className="data-[active=true]:bg-sidebar-accent"
+                    className="transition-colors duration-200 data-[active=true]:bg-sidebar-accent data-[active=true]:relative data-[active=true]:before:absolute data-[active=true]:before:left-0 data-[active=true]:before:top-1/2 data-[active=true]:before:-translate-y-1/2 data-[active=true]:before:h-4 data-[active=true]:before:w-0.5 data-[active=true]:before:rounded-full data-[active=true]:before:bg-primary"
                   >
                     <Link href={item.url} data-testid={`link-${item.title.toLowerCase()}`}>
                       <item.icon className="h-4 w-4" />
@@ -93,7 +93,7 @@ export function AppSidebar() {
                   <SidebarMenuButton
                     asChild
                     data-active={location === item.url}
-                    className="data-[active=true]:bg-sidebar-accent"
+                    className="transition-colors duration-200 data-[active=true]:bg-sidebar-accent data-[active=true]:relative data-[active=true]:before:absolute data-[active=true]:before:left-0 data-[active=true]:before:top-1/2 data-[active=true]:before:-translate-y-1/2 data-[active=true]:before:h-4 data-[active=true]:before:w-0.5 data-[active=true]:before:rounded-full data-[active=true]:before:bg-primary"
                   >
                     <Link href={item.url} data-testid={`link-${item.title.toLowerCase()}`}>
                       <item.icon className="h-4 w-4" />
@@ -122,6 +122,7 @@ export function AppSidebar() {
             variant="ghost"
             onClick={() => logout.mutate()}
             data-testid="button-logout"
+            aria-label="Log out"
           >
             <LogOut className="h-4 w-4" />
           </Button>

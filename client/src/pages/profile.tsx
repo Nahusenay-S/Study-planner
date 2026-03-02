@@ -184,7 +184,7 @@ export default function ProfilePage() {
 
   if (!user || isLoading) {
     return (
-      <div className="p-6 space-y-6 max-w-4xl mx-auto">
+      <div className="p-4 sm:p-6 space-y-5 sm:space-y-6 max-w-4xl mx-auto">
         <Skeleton className="h-40 w-full" />
         <div className="grid grid-cols-2 gap-4">
           {[...Array(4)].map((_, i) => (
@@ -216,7 +216,7 @@ export default function ProfilePage() {
   ));
 
   return (
-    <div className="p-6 space-y-6 max-w-4xl mx-auto animate-fade-in">
+    <div className="p-4 sm:p-6 space-y-5 sm:space-y-6 max-w-4xl mx-auto animate-fade-in">
       <Card>
         <CardContent className="p-6 bg-gradient-to-r from-blue-500/5 via-purple-500/5 to-indigo-500/5 rounded-lg">
           <div className="flex items-start gap-6 flex-wrap">

@@ -284,7 +284,7 @@ export default function Dashboard() {
 
   if (isLoading) {
     return (
-      <div className="p-6 space-y-6">
+      <div className="p-4 sm:p-6 space-y-5 sm:space-y-6">
         <Skeleton className="h-20 w-full" />
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {[...Array(4)].map((_, i) => (
@@ -303,10 +303,10 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl mx-auto animate-fade-in">
-      <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold" data-testid="text-dashboard-title">
+    <div className="p-4 sm:p-6 space-y-5 sm:space-y-6 max-w-7xl mx-auto animate-fade-in">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-4">
+        <div className="min-w-0">
+          <h1 className="text-xl sm:text-2xl font-bold truncate" data-testid="text-dashboard-title">
             {greeting()}, {user?.displayName || user?.username || "Student"}
           </h1>
           <p className="text-muted-foreground text-sm mt-1">
@@ -315,7 +315,7 @@ export default function Dashboard() {
               : "Track your study progress and stay on top of deadlines."}
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 shrink-0">
           {user && user.streakCount > 0 && (
             <Badge variant="secondary" className="gap-1">
               <Flame className="h-3 w-3 text-orange-500" />

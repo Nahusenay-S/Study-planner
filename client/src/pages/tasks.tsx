@@ -384,7 +384,7 @@ export default function TasksPage() {
 
   if (isLoading) {
     return (
-      <div className="p-6 space-y-6 max-w-5xl mx-auto">
+      <div className="p-4 sm:p-6 space-y-5 sm:space-y-6 max-w-5xl mx-auto">
         <Skeleton className="h-8 w-40" />
         <div className="space-y-3">
           {[...Array(5)].map((_, i) => (
@@ -396,10 +396,10 @@ export default function TasksPage() {
   }
 
   return (
-    <div className="p-6 space-y-6 max-w-5xl mx-auto animate-fade-in">
+    <div className="p-4 sm:p-6 space-y-5 sm:space-y-6 max-w-5xl mx-auto animate-fade-in">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold" data-testid="text-tasks-title">Tasks</h1>
+          <h1 className="text-xl sm:text-2xl font-bold" data-testid="text-tasks-title">Tasks</h1>
           <p className="text-muted-foreground text-sm mt-1">
             {tasks.length} total, {completedTasks.length} completed
           </p>

@@ -137,7 +137,7 @@ export default function PomodoroPage() {
 
   if (isLoading) {
     return (
-      <div className="p-6 space-y-6 max-w-4xl mx-auto">
+      <div className="p-4 sm:p-6 space-y-5 sm:space-y-6 max-w-4xl mx-auto">
         <Skeleton className="h-8 w-40" />
         <Skeleton className="h-96 w-full" />
       </div>
@@ -145,9 +145,9 @@ export default function PomodoroPage() {
   }
 
   return (
-    <div className="p-6 space-y-6 max-w-4xl mx-auto animate-fade-in">
+    <div className="p-4 sm:p-6 space-y-5 sm:space-y-6 max-w-4xl mx-auto animate-fade-in">
       <div>
-        <h1 className="text-2xl font-bold" data-testid="text-pomodoro-title">Pomodoro Timer</h1>
+        <h1 className="text-xl sm:text-2xl font-bold" data-testid="text-pomodoro-title">Pomodoro Timer</h1>
         <p className="text-muted-foreground text-sm mt-1">
           Stay focused with timed study sessions.
         </p>

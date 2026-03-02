@@ -189,7 +189,7 @@ export default function SubjectsPage() {
 
   if (isLoading) {
     return (
-      <div className="p-6 space-y-6 max-w-5xl mx-auto">
+      <div className="p-4 sm:p-6 space-y-5 sm:space-y-6 max-w-5xl mx-auto">
         <Skeleton className="h-8 w-40" />
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {[...Array(6)].map((_, i) => (
@@ -201,10 +201,10 @@ export default function SubjectsPage() {
   }
 
   return (
-    <div className="p-6 space-y-6 max-w-5xl mx-auto animate-fade-in">
+    <div className="p-4 sm:p-6 space-y-5 sm:space-y-6 max-w-5xl mx-auto animate-fade-in">
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold" data-testid="text-subjects-title">Subjects</h1>
+          <h1 className="text-xl sm:text-2xl font-bold" data-testid="text-subjects-title">Subjects</h1>
           <p className="text-muted-foreground text-sm mt-1">
             Manage your study subjects and organize tasks.
           </p>

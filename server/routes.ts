@@ -6,14 +6,14 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import { storage } from "./storage";
-import { registerSchema, loginSchema, insertSubjectSchema, insertTaskSchema, insertPomodoroSessionSchema, updateProfileSchema } from "@shared/schema";
+import { registerSchema, loginSchema, insertSubjectSchema, insertTaskSchema, insertPomodoroSessionSchema, insertResourceSchema, updateProfileSchema } from "@shared/schema";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 
 const uploadsDir = path.join(process.cwd(), "uploads", "avatars");
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-}
+const resourcesDir = path.join(process.cwd(), "uploads", "resources");
+if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+if (!fs.existsSync(resourcesDir)) fs.mkdirSync(resourcesDir, { recursive: true });
 
 const avatarStorage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, uploadsDir),
@@ -203,8 +203,10 @@ export async function registerRoutes(
   });
 
   app.patch("/api/subjects/:id", requireAuth, async (req, res) => {
-    const id = parseInt(req.params.id);
+    const id = parseInt(String(req.params.id));
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
     const parsed = updateSubjectSchema.safeParse(req.body);
+
     if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
     const subject = await storage.updateSubject(id, req.session.userId!, parsed.data);
     if (!subject) return res.status(404).json({ message: "Subject not found" });
@@ -212,7 +214,8 @@ export async function registerRoutes(
   });
 
   app.delete("/api/subjects/:id", requireAuth, async (req, res) => {
-    const id = parseInt(req.params.id);
+    const id = parseInt(String(req.params.id));
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
     const deleted = await storage.deleteSubject(id, req.session.userId!);
     if (!deleted) return res.status(404).json({ message: "Subject not found" });
     res.status(204).send();
@@ -233,7 +236,8 @@ export async function registerRoutes(
   });
 
   app.patch("/api/tasks/:id", requireAuth, async (req, res) => {
-    const id = parseInt(req.params.id);
+    const id = parseInt(String(req.params.id));
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
     const parsed = updateTaskSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
     if (parsed.data.subjectId) {
@@ -246,7 +250,8 @@ export async function registerRoutes(
   });
 
   app.delete("/api/tasks/:id", requireAuth, async (req, res) => {
-    const id = parseInt(req.params.id);
+    const id = parseInt(String(req.params.id));
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
     const deleted = await storage.deleteTask(id, req.session.userId!);
     if (!deleted) return res.status(404).json({ message: "Task not found" });
     res.status(204).send();
@@ -255,6 +260,61 @@ export async function registerRoutes(
   app.get("/api/pomodoro-sessions", requireAuth, async (req, res) => {
     const sessions = await storage.getPomodoroSessions(req.session.userId!);
     res.json(sessions);
+  });
+
+  const resourceStorage = multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, resourcesDir),
+    filename: (req, _file, cb) => {
+      const ext = path.extname(_file.originalname);
+      cb(null, `resource-${req.session.userId}-${Date.now()}${ext}`);
+    },
+  });
+
+  const resourceUpload = multer({
+    storage: resourceStorage,
+    limits: { fileSize: 10 * 1024 * 1024 },
+  });
+
+  app.get("/api/resources", requireAuth, async (req, res) => {
+    const resources = await storage.getResources();
+    res.json(resources);
+  });
+
+  app.get("/api/resources/mine", requireAuth, async (req, res) => {
+    const resources = await storage.getResourcesByUser(req.session.userId!);
+    res.json(resources);
+  });
+
+  app.post("/api/resources", requireAuth, (req, res) => {
+    resourceUpload.single("file")(req, res, async (err) => {
+      if (err) {
+        return res.status(400).json({ message: err.message || "Upload failed" });
+      }
+      const parsed = insertResourceSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+
+      const resourceData: any = { ...parsed.data };
+      if (req.file) {
+        resourceData.filePath = `/uploads/resources/${req.file.filename}`;
+        resourceData.fileName = req.file.originalname;
+      }
+
+      const resource = await storage.createResource(req.session.userId!, resourceData);
+      res.status(201).json(resource);
+    });
+  });
+
+  app.delete("/api/resources/:id", requireAuth, async (req, res) => {
+    const id = parseInt(String(req.params.id));
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const resource = await storage.getResource(id);
+    if (resource?.filePath) {
+      const fullPath = path.join(process.cwd(), resource.filePath);
+      if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
+    }
+    const deleted = await storage.deleteResource(id, req.session.userId!);
+    if (!deleted) return res.status(404).json({ message: "Resource not found" });
+    res.status(204).send();
   });
 
   app.post("/api/pomodoro-sessions", requireAuth, async (req, res) => {

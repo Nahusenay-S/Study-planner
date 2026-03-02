@@ -2,7 +2,8 @@ import {
   type User, type Subject, type InsertSubject,
   type Task, type InsertTask,
   type PomodoroSession, type InsertPomodoroSession,
-  users, subjects, tasks, pomodoroSessions
+  type Resource, type InsertResource,
+  users, subjects, tasks, pomodoroSessions, resources
 } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
@@ -34,6 +35,12 @@ export interface IStorage {
 
   getPomodoroSessions(userId: number): Promise<PomodoroSession[]>;
   createPomodoroSession(userId: number, session: InsertPomodoroSession): Promise<PomodoroSession>;
+
+  getResources(): Promise<Resource[]>;
+  getResourcesByUser(userId: number): Promise<Resource[]>;
+  getResource(id: number): Promise<Resource | undefined>;
+  createResource(userId: number, resource: InsertResource & { filePath?: string; fileName?: string }): Promise<Resource>;
+  deleteResource(id: number, userId: number): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -112,6 +119,29 @@ export class DatabaseStorage implements IStorage {
   async createPomodoroSession(userId: number, session: InsertPomodoroSession): Promise<PomodoroSession> {
     const [created] = await db.insert(pomodoroSessions).values({ ...session, userId }).returning();
     return created;
+  }
+
+  async getResources(): Promise<Resource[]> {
+    return await db.select().from(resources).where(eq(resources.isPublic, 1));
+  }
+
+  async getResourcesByUser(userId: number): Promise<Resource[]> {
+    return await db.select().from(resources).where(eq(resources.userId, userId));
+  }
+
+  async getResource(id: number): Promise<Resource | undefined> {
+    const [resource] = await db.select().from(resources).where(eq(resources.id, id));
+    return resource;
+  }
+
+  async createResource(userId: number, resource: InsertResource & { filePath?: string; fileName?: string }): Promise<Resource> {
+    const [created] = await db.insert(resources).values({ ...resource, userId }).returning();
+    return created;
+  }
+
+  async deleteResource(id: number, userId: number): Promise<boolean> {
+    const result = await db.delete(resources).where(and(eq(resources.id, id), eq(resources.userId, userId))).returning();
+    return result.length > 0;
   }
 }
 

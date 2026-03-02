@@ -48,6 +48,20 @@ export const pomodoroSessions = pgTable("pomodoro_sessions", {
   completedAt: text("completed_at").notNull(),
 });
 
+export const resources = pgTable("resources", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  description: text("description"),
+  type: text("type").notNull(),
+  url: text("url"),
+  filePath: text("file_path"),
+  fileName: text("file_name"),
+  subjectId: integer("subject_id").references(() => subjects.id, { onDelete: "set null" }),
+  isPublic: integer("is_public").notNull().default(1),
+  createdAt: text("created_at").notNull().default(sql`now()`),
+});
+
 export const registerSchema = z.object({
   username: z.string().min(3).max(30),
   email: z.string().email(),
@@ -85,6 +99,15 @@ export const insertPomodoroSessionSchema = z.object({
   completedAt: z.string(),
 });
 
+export const insertResourceSchema = z.object({
+  title: z.string().min(1),
+  description: z.string().nullable().optional(),
+  type: z.enum(["link", "file", "note"]),
+  url: z.string().nullable().optional(),
+  subjectId: z.number().int().nullable().optional(),
+  isPublic: z.number().int().default(1),
+});
+
 export const updateProfileSchema = z.object({
   displayName: z.string().optional(),
 });
@@ -96,3 +119,5 @@ export type Task = typeof tasks.$inferSelect;
 export type InsertTask = z.infer<typeof insertTaskSchema>;
 export type PomodoroSession = typeof pomodoroSessions.$inferSelect;
 export type InsertPomodoroSession = z.infer<typeof insertPomodoroSessionSchema>;
+export type Resource = typeof resources.$inferSelect;
+export type InsertResource = z.infer<typeof insertResourceSchema>;

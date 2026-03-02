@@ -310,7 +310,7 @@ export default function PomodoroPage() {
                 <p className="text-3xl font-bold" data-testid="text-session-streak">
                   {sessionsCompleted}
                 </p>
-                <p className="text-sm text-muted-foreground">Current streak</p>
+                <p className="text-sm text-muted-foreground">Sessions this visit</p>
               </div>
             </CardContent>
           </Card>

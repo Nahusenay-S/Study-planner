@@ -33,8 +33,8 @@ export function useAuth() {
       await apiRequest("POST", "/api/auth/logout");
     },
     onSuccess: () => {
+      queryClient.setQueryData(["/api/auth/me"], null);
       queryClient.clear();
-      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
     },
   });
 

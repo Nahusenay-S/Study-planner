@@ -22,6 +22,7 @@ import {
   SidebarHeader,
   SidebarFooter,
 } from "@/components/ui/sidebar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -108,9 +109,12 @@ export function AppSidebar() {
       </SidebarContent>
       <SidebarFooter className="p-3">
         <div className="flex items-center gap-2 p-2 rounded-lg bg-muted/40">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-blue-500 to-purple-600 text-white text-xs font-bold">
-            {initials}
-          </div>
+          <Avatar className="h-8 w-8 rounded-md">
+            {user?.avatar && <AvatarImage src={user.avatar} alt={user?.displayName || user?.username || ""} className="rounded-md object-cover" />}
+            <AvatarFallback className="rounded-md bg-gradient-to-br from-blue-500 to-purple-600 text-white text-xs font-bold">
+              {initials}
+            </AvatarFallback>
+          </Avatar>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium truncate" data-testid="text-sidebar-user">
               {user?.displayName || user?.username}

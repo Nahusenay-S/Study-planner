@@ -87,7 +87,6 @@ export const insertPomodoroSessionSchema = z.object({
 
 export const updateProfileSchema = z.object({
   displayName: z.string().optional(),
-  avatar: z.string().optional(),
 });
 
 export type User = typeof users.$inferSelect;

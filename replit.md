@@ -40,7 +40,7 @@ server/
 ```
 
 ## Database Tables
-- `users` - Auth + profile (username, email, password, displayName, streakCount, totalStudyMinutes, productivityScore)
+- `users` - Auth + profile (username, email, password, displayName, avatar, streakCount, totalStudyMinutes, productivityScore)
 - `subjects` - Study subjects (userId, name, color, icon, difficultyLevel)
 - `tasks` - Tasks (userId, title, description, subjectId, priority, status, deadline, estimatedMinutes, kanbanOrder)
 - `pomodoro_sessions` - Focus sessions (userId, subjectId, taskId, duration, completedAt)
@@ -50,16 +50,23 @@ server/
 - `POST /api/auth/login` - Login
 - `POST /api/auth/logout` - Logout
 - `GET /api/auth/me` - Get current user
-- `PATCH /api/auth/profile` - Update profile (whitelisted fields)
+- `PATCH /api/auth/profile` - Update profile (displayName only)
+- `POST /api/auth/avatar` - Upload avatar (multipart, max 2MB, JPEG/PNG/GIF/WebP)
+- `DELETE /api/auth/avatar` - Remove avatar (safe path-constrained delete)
 - `GET/POST /api/subjects`, `PATCH/DELETE /api/subjects/:id` (ownership enforced)
 - `GET/POST /api/tasks`, `PATCH/DELETE /api/tasks/:id` (ownership enforced)
 - `GET/POST /api/pomodoro-sessions`
+
+## Dependencies
+- multer - Multipart file upload handling for avatar uploads
 
 ## Security
 - All CRUD endpoints enforce userId ownership (IDOR protection)
 - PATCH endpoints use Zod update schemas to whitelist mutable fields
 - Task creation validates subjectId belongs to current user
 - Session cookies: httpOnly, secure in production, sameSite: lax
+- Avatar upload: MIME type validation, 2MB limit, safe path-constrained file deletion
+- Avatar field removed from updateProfileSchema (only settable via dedicated upload endpoint)
 
 ## Modernization Features
 - Shared constants (`client/src/lib/constants.ts`) for priorities, statuses, colors, icons
@@ -71,3 +78,4 @@ server/
 - Active nav indicator (blue accent bar) in sidebar
 - Circular SVG productivity score ring on profile page
 - Difficulty level dots on subject cards
+- Avatar upload with camera overlay on profile, avatar display in sidebar

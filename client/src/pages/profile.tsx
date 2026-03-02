@@ -1,11 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   User,
@@ -17,6 +17,9 @@ import {
   Calendar,
   TrendingUp,
   Zap,
+  Camera,
+  Trash2,
+  Loader2,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
@@ -104,6 +107,7 @@ export default function ProfilePage() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [displayName, setDisplayName] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (user?.displayName) setDisplayName(user.displayName);
@@ -128,6 +132,55 @@ export default function ProfilePage() {
       toast({ title: "Failed to update", description: err.message, variant: "destructive" });
     },
   });
+
+  const avatarUploadMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const formData = new FormData();
+      formData.append("avatar", file);
+      const res = await fetch("/api/auth/avatar", {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.message || "Upload failed");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+      toast({ title: "Avatar updated" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to upload avatar", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const avatarDeleteMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("DELETE", "/api/auth/avatar");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+      toast({ title: "Avatar removed" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to remove avatar", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      toast({ title: "File too large", description: "Max file size is 2MB", variant: "destructive" });
+      return;
+    }
+    avatarUploadMutation.mutate(file);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
 
   if (!user || isLoading) {
     return (
@@ -167,8 +220,45 @@ export default function ProfilePage() {
       <Card>
         <CardContent className="p-6 bg-gradient-to-r from-blue-500/5 via-purple-500/5 to-indigo-500/5 rounded-lg">
           <div className="flex items-start gap-6 flex-wrap">
-            <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 to-purple-600 text-white text-2xl font-bold shrink-0">
-              {initials}
+            <div className="relative group shrink-0">
+              <Avatar className="h-20 w-20 rounded-2xl text-2xl">
+                {user.avatar && <AvatarImage src={user.avatar} alt={user.displayName || user.username} className="rounded-2xl object-cover" />}
+                <AvatarFallback className="rounded-2xl bg-gradient-to-br from-blue-500 to-purple-600 text-white text-2xl font-bold">
+                  {initials}
+                </AvatarFallback>
+              </Avatar>
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="absolute inset-0 flex items-center justify-center rounded-2xl bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                aria-label="Upload avatar"
+                data-testid="button-upload-avatar"
+              >
+                {avatarUploadMutation.isPending ? (
+                  <Loader2 className="h-6 w-6 text-white animate-spin" />
+                ) : (
+                  <Camera className="h-6 w-6 text-white" />
+                )}
+              </button>
+              {user.avatar && (
+                <button
+                  type="button"
+                  onClick={() => avatarDeleteMutation.mutate()}
+                  className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-destructive-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+                  aria-label="Remove avatar"
+                  data-testid="button-remove-avatar"
+                >
+                  <Trash2 className="h-3 w-3" />
+                </button>
+              )}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/gif,image/webp"
+                onChange={handleAvatarChange}
+                className="hidden"
+                data-testid="input-avatar-file"
+              />
             </div>
             <div className="flex-1 min-w-0">
               <h1 className="text-2xl font-bold" data-testid="text-profile-name">

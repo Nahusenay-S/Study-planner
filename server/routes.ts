@@ -2,10 +2,39 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
+import multer from "multer";
+import path from "path";
+import fs from "fs";
 import { storage } from "./storage";
 import { registerSchema, loginSchema, insertSubjectSchema, insertTaskSchema, insertPomodoroSessionSchema, updateProfileSchema } from "@shared/schema";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
+
+const uploadsDir = path.join(process.cwd(), "uploads", "avatars");
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+const avatarStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, uploadsDir),
+  filename: (req, _file, cb) => {
+    const ext = path.extname(_file.originalname) || ".png";
+    cb(null, `avatar-${req.session.userId}-${Date.now()}${ext}`);
+  },
+});
+
+const avatarUpload = multer({
+  storage: avatarStorage,
+  limits: { fileSize: 2 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const allowed = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+    if (allowed.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only JPEG, PNG, GIF, and WebP images are allowed"));
+    }
+  },
+});
 
 declare module "express-session" {
   interface SessionData {
@@ -43,6 +72,8 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+  app.use("/uploads", (await import("express")).default.static(path.join(process.cwd(), "uploads")));
+
   const PgStore = connectPgSimple(session);
   app.use(
     session({
@@ -117,6 +148,45 @@ export async function registerRoutes(
     const user = await storage.updateUser(req.session.userId!, parsed.data);
     if (!user) return res.status(404).json({ message: "User not found" });
     const { password, ...safeUser } = user;
+    res.json(safeUser);
+  });
+
+  function safeDeleteAvatar(avatarPath: string | null) {
+    if (!avatarPath) return;
+    const basename = path.basename(avatarPath);
+    const resolved = path.resolve(uploadsDir, basename);
+    if (!resolved.startsWith(uploadsDir)) return;
+    if (fs.existsSync(resolved)) fs.unlinkSync(resolved);
+  }
+
+  app.post("/api/auth/avatar", requireAuth, (req, res) => {
+    avatarUpload.single("avatar")(req, res, async (err) => {
+      if (err) {
+        const message = err instanceof multer.MulterError && err.code === "LIMIT_FILE_SIZE"
+          ? "File too large. Max 2MB."
+          : err.message || "Upload failed";
+        return res.status(400).json({ message });
+      }
+      if (!req.file) return res.status(400).json({ message: "No file uploaded" });
+
+      const existingUser = await storage.getUserById(req.session.userId!);
+      if (existingUser?.avatar) safeDeleteAvatar(existingUser.avatar);
+
+      const avatarUrl = `/uploads/avatars/${req.file.filename}`;
+      const user = await storage.updateUser(req.session.userId!, { avatar: avatarUrl });
+      if (!user) return res.status(404).json({ message: "User not found" });
+      const { password, ...safeUser } = user;
+      res.json(safeUser);
+    });
+  });
+
+  app.delete("/api/auth/avatar", requireAuth, async (req, res) => {
+    const user = await storage.getUserById(req.session.userId!);
+    if (!user) return res.status(404).json({ message: "User not found" });
+    safeDeleteAvatar(user.avatar);
+    const updated = await storage.updateUser(req.session.userId!, { avatar: null });
+    if (!updated) return res.status(404).json({ message: "User not found" });
+    const { password, ...safeUser } = updated;
     res.json(safeUser);
   });
 

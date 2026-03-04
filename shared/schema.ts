@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, integer, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, timestamp, jsonb } from "drizzle-orm/pg-core";
 import { z } from "zod";
 
 export const users = pgTable("users", {
@@ -9,6 +9,8 @@ export const users = pgTable("users", {
   password: text("password").notNull(),
   displayName: text("display_name"),
   avatar: text("avatar"),
+  bio: text("bio"),
+  role: text("role").notNull().default("user"), // 'super_admin', 'admin', 'user'
   isAdmin: integer("is_admin").notNull().default(0),
   streakCount: integer("streak_count").notNull().default(0),
   totalStudyMinutes: integer("total_study_minutes").notNull().default(0),
@@ -16,6 +18,12 @@ export const users = pgTable("users", {
   lastActiveDate: text("last_active_date"),
   readinessScore: integer("readiness_score").notNull().default(0),
   createdAt: text("created_at").notNull().default(sql`now()`),
+});
+
+export const session = pgTable("session", {
+  sid: text("sid").primaryKey(),
+  sess: jsonb("sess").notNull(),
+  expire: timestamp("expire", { precision: 6 }).notNull(),
 });
 
 export const subjects = pgTable("subjects", {
@@ -81,7 +89,7 @@ export const resources = pgTable("resources", {
   filePath: text("file_path"),
   fileName: text("file_name"),
   subjectId: integer("subject_id").references(() => subjects.id, { onDelete: "set null" }),
-  isPublic: integer("is_public").notNull().default(1),
+  isPublic: integer("is_public").notNull().default(0),
   aiSummary: text("ai_summary"),
   createdAt: text("created_at").notNull().default(sql`now()`),
 });
@@ -161,11 +169,73 @@ export const insertResourceSchema = z.object({
   url: z.string().nullable().optional(),
   subjectId: z.coerce.number().int().nullable().optional(),
   groupId: z.coerce.number().int().nullable().optional(),
-  isPublic: z.coerce.number().int().default(1),
+  isPublic: z.coerce.number().int().default(0),
 });
 
 export const updateProfileSchema = z.object({
   displayName: z.string().optional(),
+  bio: z.string().max(160).optional(),
+});
+
+export const groupMessages = pgTable("group_messages", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  groupId: integer("group_id").notNull().references(() => studyGroups.id, { onDelete: "cascade" }),
+  replyToId: integer("reply_to_id").references((): any => groupMessages.id, { onDelete: "set null" }),
+  content: text("content").notNull(),
+  createdAt: text("created_at").notNull().default(sql`now()`),
+});
+
+export const quizzes = pgTable("quizzes", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  title: text("title").notNull(),
+  description: text("description"),
+  userId: integer("user_id").references(() => users.id, { onDelete: "set null" }),
+  groupId: integer("group_id").references(() => studyGroups.id, { onDelete: "cascade" }),
+  resourceId: integer("resource_id").references(() => resources.id, { onDelete: "set null" }),
+  difficulty: text("difficulty").notNull().default("medium"),
+  isBattle: integer("is_battle").notNull().default(0),
+  createdAt: text("created_at").notNull().default(sql`now()`),
+});
+
+export const quizQuestions = pgTable("quiz_questions", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  quizId: integer("quiz_id").notNull().references(() => quizzes.id, { onDelete: "cascade" }),
+  question: text("question").notNull(),
+  options: text("options").notNull(), // JSON string array
+  correctAnswer: text("correct_answer").notNull(),
+  correctIndex: integer("correct_index").notNull(),
+  explanation: text("explanation"),
+});
+
+export const quizResults = pgTable("quiz_results", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  quizId: integer("quiz_id").notNull().references(() => quizzes.id, { onDelete: "cascade" }),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  score: integer("score").notNull(),
+  totalQuestions: integer("total_questions").notNull(),
+  completedAt: text("completed_at").notNull().default(sql`now()`),
+});
+
+export const insertGroupMessageSchema = z.object({
+  groupId: z.number().int(),
+  content: z.string().min(1),
+  replyToId: z.number().int().nullish(),
+});
+
+export const insertQuizSchema = z.object({
+  title: z.string().min(1),
+  description: z.string().optional(),
+  groupId: z.number().int().optional(),
+  resourceId: z.number().int().optional(),
+  difficulty: z.string().default("medium"),
+  isBattle: z.number().int().default(0),
+});
+
+export const insertQuizResultSchema = z.object({
+  quizId: z.number().int(),
+  score: z.number().int(),
+  totalQuestions: z.number().int(),
 });
 
 export type User = typeof users.$inferSelect;
@@ -183,3 +253,8 @@ export type GroupMember = typeof groupMembers.$inferSelect;
 export type Comment = typeof comments.$inferSelect;
 export type InsertComment = z.infer<typeof insertCommentSchema>;
 export type Notification = typeof notifications.$inferSelect;
+export type GroupMessage = typeof groupMessages.$inferSelect;
+export type InsertGroupMessage = z.infer<typeof insertGroupMessageSchema>;
+export type Quiz = typeof quizzes.$inferSelect;
+export type QuizQuestion = typeof quizQuestions.$inferSelect;
+export type QuizResult = typeof quizResults.$inferSelect;

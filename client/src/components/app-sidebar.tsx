@@ -109,17 +109,16 @@ export function AppSidebar() {
                 </SidebarMenuItem>
               ))}
 
-              {user?.isAdmin === 1 && (
+              {(user?.isAdmin === 1 || user?.role === 'super_admin' || user?.role === 'admin') && (
                 <SidebarMenuItem>
                   <SidebarMenuButton
                     asChild
-                    isActive={location === "/admin"}
                     data-active={location === "/admin"}
                     className="transition-colors duration-200 data-[active=true]:bg-sidebar-accent data-[active=true]:relative data-[active=true]:before:absolute data-[active=true]:before:left-0 data-[active=true]:before:top-1/2 data-[active=true]:before:-translate-y-1/2 data-[active=true]:before:h-4 data-[active=true]:before:w-0.5 data-[active=true]:before:rounded-full data-[active=true]:before:bg-primary"
                   >
                     <Link href="/admin" data-testid="link-admin">
-                      <Shield className="h-4 w-4 text-amber-500" />
-                      <span className="font-bold text-amber-500">System Admin</span>
+                      <Shield className="h-4 w-4 text-primary" />
+                      <span className="font-bold text-primary tracking-tight">System Admin</span>
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>

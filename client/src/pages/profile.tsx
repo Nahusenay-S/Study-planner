@@ -107,11 +107,13 @@ export default function ProfilePage() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [displayName, setDisplayName] = useState("");
+  const [bio, setBio] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (user?.displayName) setDisplayName(user.displayName);
-  }, [user?.displayName]);
+    if (user?.bio) setBio(user.bio);
+  }, [user]);
 
   const { data: subjects = [] } = useQuery<Subject[]>({ queryKey: ["/api/subjects"] });
   const { data: tasks = [] } = useQuery<Task[]>({ queryKey: ["/api/tasks"] });
@@ -120,7 +122,7 @@ export default function ProfilePage() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: async (data: { displayName?: string }) => {
+    mutationFn: async (data: { displayName?: string, bio?: string }) => {
       const res = await apiRequest("PATCH", "/api/auth/profile", data);
       return res.json();
     },
@@ -354,29 +356,48 @@ export default function ProfilePage() {
               className="space-y-4"
               onSubmit={(e) => {
                 e.preventDefault();
-                updateMutation.mutate({ displayName });
+                updateMutation.mutate({ displayName, bio });
               }}
             >
-              <div className="space-y-2">
-                <Label htmlFor="profile-name">Display Name</Label>
-                <Input
-                  id="profile-name"
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  data-testid="input-profile-name"
-                />
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="displayName">Display Name</Label>
+                  <Input
+                    id="displayName"
+                    value={displayName}
+                    onChange={(e) => setDisplayName(e.target.value)}
+                    className="bg-muted/30 border-primary/10 focus:border-primary/30 transition-all rounded-xl"
+                    placeholder="Enter your name"
+                    data-testid="input-profile-name"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="bio">Bio</Label>
+                  <Input
+                    id="bio"
+                    value={bio}
+                    onChange={(e) => setBio(e.target.value)}
+                    className="bg-muted/30 border-primary/10 focus:border-primary/30 transition-all rounded-xl"
+                    placeholder="A short bio about yourself"
+                    maxLength={160}
+                  />
+                  <p className="text-[10px] text-muted-foreground text-right">{bio.length}/160</p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Email</Label>
+                  <Input value={user.email} disabled className="opacity-60" />
+                </div>
+                <Button
+                  type="submit"
+                  disabled={updateMutation.isPending || (displayName === (user?.displayName || "") && bio === (user?.bio || ""))}
+                  className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-black uppercase tracking-widest py-6 rounded-xl shadow-lg shadow-primary/20 transition-all"
+                  data-testid="button-save-profile"
+                >
+                  {updateMutation.isPending ? "Syncing..." : "Update Intelligence"}
+                </Button>
               </div>
-              <div className="space-y-2">
-                <Label>Email</Label>
-                <Input value={user.email} disabled className="opacity-60" />
-              </div>
-              <Button
-                type="submit"
-                disabled={updateMutation.isPending}
-                data-testid="button-save-profile"
-              >
-                {updateMutation.isPending ? "Saving..." : "Save Changes"}
-              </Button>
             </form>
           </CardContent>
         </Card>

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -263,6 +264,89 @@ function RecentActivity({ tasks, subjects }: { tasks: Task[]; subjects: Subject[
   );
 }
 
+function DailyCheckIn() {
+  const { user } = useAuth();
+  const [checkedIn, setCheckedIn] = useState(() => {
+    const last = localStorage.getItem("last_checkin");
+    return last === new Date().toISOString().split("T")[0];
+  });
+
+  const handleCheckIn = () => {
+    localStorage.setItem("last_checkin", new Date().toISOString().split("T")[0]);
+    setCheckedIn(true);
+  };
+
+  if (checkedIn) {
+    return (
+      <Card className="bg-gradient-to-r from-green-500/10 to-emerald-500/10 border-green-500/20 shadow-lg shadow-green-500/5">
+        <CardContent className="p-6 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="h-12 w-12 rounded-full bg-green-500/20 flex items-center justify-center text-green-600">
+              <CheckCircle2 className="h-6 w-6" />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold">You're checked in!</h3>
+              <p className="text-sm text-muted-foreground">Focus mode is active. Let's make today count.</p>
+            </div>
+          </div>
+          <div className="hidden sm:block">
+            <Badge variant="outline" className="text-green-600 border-green-500/30 bg-green-500/5 px-4 py-1">READY FOR SESSIONS</Badge>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="bg-gradient-to-br from-primary/5 via-primary/[0.02] to-transparent border-primary/20 shadow-xl shadow-primary/5 overflow-hidden relative">
+      <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none">
+        <Sparkles className="h-24 w-24 text-primary" />
+      </div>
+      <CardContent className="p-8 relative z-10">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-primary font-black tracking-[0.2em] text-[10px] uppercase">
+              <Zap className="h-3 w-3" />
+              Morning Briefing
+            </div>
+            <h2 className="text-3xl font-black tracking-tight">{user?.displayName?.split(' ')[0]}, ready to synchronize?</h2>
+            <p className="text-muted-foreground flex items-center gap-2">
+              <Target className="h-4 w-4 text-primary" />
+              Complete your first session or quiz to initialize your daily streak.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <Button onClick={handleCheckIn} className="rounded-full px-8 py-6 h-auto bg-primary text-primary-foreground font-bold shadow-lg shadow-primary/20 hover:scale-105 transition-transform">
+              INITIALIZE DAY
+            </Button>
+            <Button variant="outline" className="rounded-full px-8 py-6 h-auto border-primary/20 bg-background/50 backdrop-blur hover:bg-background/80 transition-all font-bold">
+              VIEW SCHEDULE
+            </Button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-8">
+          {[
+            { label: "Morning Quiz", desc: "Test last night's recall", icon: Brain, color: "text-purple-500" },
+            { label: "Deep Work", desc: "First 50m session", icon: Timer, color: "text-blue-500" },
+            { label: "Resource Sync", desc: "Review group updates", icon: MessageCircle, color: "text-amber-500" },
+          ].map((item, i) => (
+            <div key={i} className="p-4 rounded-2xl bg-background/40 border border-border/50 hover:border-primary/20 transition-all cursor-pointer group">
+              <div className="flex items-center gap-3">
+                <item.icon className={`h-5 w-5 ${item.color} group-hover:scale-110 transition-transform`} />
+                <div>
+                  <p className="text-sm font-bold leading-none">{item.label}</p>
+                  <p className="text-[11px] text-muted-foreground mt-1">{item.desc}</p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function Dashboard() {
   const { user } = useAuth();
   const { data: subjects = [], isLoading: loadingSubjects } = useQuery<Subject[]>({
@@ -391,18 +475,30 @@ export default function Dashboard() {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
-          title="Total Tasks"
+          title="Active Subjects"
+          value={subjects.length || 0}
+          icon={BookOpen}
+          color="#3B82F6"
+        />
+        <StatCard
+          title="Tasks"
           value={totalTasks}
           subtitle={`${completedTasks} completed`}
           icon={ListTodo}
-          color="#3B82F6"
+          color="#8B5CF6"
         />
         <StatCard
           title="Completion Rate"
           value={`${completionRate}%`}
-          subtitle={`${totalTasks - completedTasks} remaining`}
           icon={Target}
           color="#10B981"
+        />
+        <StatCard
+          title="Current Streak"
+          value={user?.streakCount || 0}
+          subtitle="Days active"
+          icon={Flame}
+          color="#F59E0B"
         />
         <StatCard
           title="Focus Time"

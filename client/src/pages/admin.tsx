@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -9,10 +9,19 @@ import {
     CheckSquare,
     Shield,
     Activity,
-    ShieldAlert
+    ShieldAlert,
+    UserCircle,
+    Key,
+    ShieldCheck
 } from "lucide-react";
 import { format } from "date-fns";
 import type { User } from "@shared/schema";
+import { useAuth } from "@/hooks/use-auth";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 
 interface AdminMetrics {
     users: number;
@@ -27,17 +36,39 @@ interface AdminData {
 }
 
 export default function AdminDashboard() {
+    const { user: currentUser } = useAuth();
+    const { toast } = useToast();
+
     const { data, isLoading, error } = useQuery<AdminData>({
         queryKey: ["/api/admin/metrics"],
-        retry: false, // If it fails with 403, don't retry.
+        retry: false,
+    });
+
+    const isSuperAdmin = currentUser?.role === 'super_admin';
+
+    const { data: allUsers = [], isLoading: usersLoading } = useQuery<User[]>({
+        queryKey: ["/api/admin/users"],
+        enabled: !!isSuperAdmin,
+    });
+
+    const roleMutation = useMutation({
+        mutationFn: async ({ id, role }: { id: number, role: string }) => {
+            const res = await apiRequest("PATCH", `/api/admin/users/${id}/role`, { role });
+            return res.json();
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+            queryClient.invalidateQueries({ queryKey: ["/api/admin/metrics"] });
+            toast({ title: "Role Updated", description: "The user's access level has been synchronized." });
+        }
     });
 
     if (error) {
         return (
             <div className="p-6 max-w-4xl mx-auto mt-10">
-                <Alert variant="destructive">
+                <Alert variant="destructive" className="rounded-[2rem] border-2">
                     <ShieldAlert className="h-4 w-4" />
-                    <AlertTitle>Access Denied</AlertTitle>
+                    <AlertTitle className="font-black">ACCESS DENIED</AlertTitle>
                     <AlertDescription>
                         {error instanceof Error ? error.message : "You do not have permission to view the admin dashboard."}
                     </AlertDescription>
@@ -49,11 +80,11 @@ export default function AdminDashboard() {
     if (isLoading || !data) {
         return (
             <div className="p-6 max-w-7xl mx-auto space-y-6 animate-pulse">
-                <Skeleton className="h-12 w-64" />
+                <Skeleton className="h-12 w-64 rounded-xl" />
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-28 rounded-xl" />)}
+                    {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-28 rounded-3xl" />)}
                 </div>
-                <Skeleton className="h-96 w-full mt-6" />
+                <Skeleton className="h-96 w-full mt-6 rounded-[2.5rem]" />
             </div>
         );
     }
@@ -61,139 +92,185 @@ export default function AdminDashboard() {
     const { metrics, recentUsers } = data;
 
     return (
-        <div className="p-4 sm:p-6 space-y-8 max-w-7xl mx-auto animate-fade-in">
-            <div className="flex items-center gap-3">
-                <Shield className="h-8 w-8 text-primary" />
-                <div>
-                    <h1 className="text-3xl font-extrabold tracking-tight">System Admin</h1>
-                    <p className="text-muted-foreground">Global StudyFlow platform overview and metrics.</p>
+        <div className="p-4 sm:p-6 space-y-8 max-w-7xl mx-auto animate-fade-in pb-20">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                <div className="flex items-center gap-4">
+                    <div className="h-16 w-16 rounded-[2rem] bg-primary/10 flex items-center justify-center text-primary shadow-inner">
+                        <Shield className="h-8 w-8" />
+                    </div>
+                    <div>
+                        <h1 className="text-4xl font-black tracking-tighter uppercase">Root Control</h1>
+                        <p className="text-muted-foreground font-medium">Platform-wide oversight and user orchestration.</p>
+                    </div>
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <Card className="bg-primary/5 border-primary/20">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <Card className="bg-primary/5 border-primary/20 rounded-[2rem] hover-elevate transition-all">
                     <CardContent className="p-6 flex items-center justify-between">
                         <div className="space-y-1">
-                            <p className="text-sm font-medium text-muted-foreground">Total Users</p>
-                            <p className="text-3xl font-bold">{metrics.users}</p>
+                            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground">Network Size</p>
+                            <p className="text-4xl font-black">{metrics.users}</p>
                         </div>
-                        <div className="h-12 w-12 rounded-full bg-primary/20 flex items-center justify-center text-primary">
-                            <Users className="h-6 w-6" />
-                        </div>
+                        <Users className="h-8 w-8 text-primary/40" />
                     </CardContent>
                 </Card>
 
-                <Card>
+                <Card className="rounded-[2rem] bg-card/40 border-border/40 hover-elevate transition-all">
                     <CardContent className="p-6 flex items-center justify-between">
                         <div className="space-y-1">
-                            <p className="text-sm font-medium text-muted-foreground">Study Groups</p>
-                            <p className="text-3xl font-bold">{metrics.groups}</p>
+                            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground">Nodes</p>
+                            <p className="text-4xl font-black">{metrics.groups}</p>
                         </div>
-                        <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center text-muted-foreground">
-                            <Folder className="h-6 w-6" />
-                        </div>
+                        <Folder className="h-8 w-8 text-muted-foreground/30" />
                     </CardContent>
                 </Card>
 
-                <Card>
+                <Card className="rounded-[2rem] bg-card/40 border-border/40 hover-elevate transition-all">
                     <CardContent className="p-6 flex items-center justify-between">
                         <div className="space-y-1">
-                            <p className="text-sm font-medium text-muted-foreground">Total Resources</p>
-                            <p className="text-3xl font-bold">{metrics.resources}</p>
+                            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground">Datapoints</p>
+                            <p className="text-4xl font-black">{metrics.resources}</p>
                         </div>
-                        <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center text-muted-foreground">
-                            <BookOpen className="h-6 w-6" />
-                        </div>
+                        <BookOpen className="h-8 w-8 text-muted-foreground/30" />
                     </CardContent>
                 </Card>
 
-                <Card>
+                <Card className="rounded-[2rem] bg-card/40 border-border/40 hover-elevate transition-all">
                     <CardContent className="p-6 flex items-center justify-between">
                         <div className="space-y-1">
-                            <p className="text-sm font-medium text-muted-foreground">Tasks Created</p>
-                            <p className="text-3xl font-bold">{metrics.tasks}</p>
+                            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground">Operations</p>
+                            <p className="text-4xl font-black">{metrics.tasks}</p>
                         </div>
-                        <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center text-muted-foreground">
-                            <CheckSquare className="h-6 w-6" />
-                        </div>
+                        <CheckSquare className="h-8 w-8 text-muted-foreground/30" />
                     </CardContent>
                 </Card>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <Card className="lg:col-span-2">
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                            <Activity className="h-5 w-5" /> Recent User Signups
-                        </CardTitle>
-                        <CardDescription>The 10 newest accounts created on the platform.</CardDescription>
+            {isSuperAdmin && (
+                <Card className="rounded-[2.5rem] border-primary/20 bg-card/80 backdrop-blur-3xl shadow-2xl overflow-hidden border-2">
+                    <CardHeader className="bg-primary/5 border-b border-primary/10 py-8 px-8 flex flex-row items-center justify-between gap-4">
+                        <div>
+                            <CardTitle className="text-2xl font-black flex items-center gap-3">
+                                <Key className="h-6 w-6 text-primary" />
+                                USER ACCESS ORCHESTRATION
+                            </CardTitle>
+                            <CardDescription className="text-muted-foreground font-medium text-base">Direct role assignment and system permission toggles.</CardDescription>
+                        </div>
+                        <Badge className="bg-primary text-primary-foreground font-black px-4 py-1.5 rounded-full shadow-lg shadow-primary/20">ROOT ACTIVE</Badge>
                     </CardHeader>
-                    <CardContent>
-                        <div className="rounded-md border overflow-hidden">
-                            <table className="w-full text-sm text-left">
-                                <thead className="bg-muted text-muted-foreground">
+                    <CardContent className="p-0">
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                                <thead className="bg-muted/50 text-muted-foreground uppercase text-[10px] font-black tracking-widest border-b border-border/40">
                                     <tr>
-                                        <th className="px-4 py-3 font-medium">User</th>
-                                        <th className="px-4 py-3 font-medium">Email</th>
-                                        <th className="px-4 py-3 font-medium">Role</th>
-                                        <th className="px-4 py-3 font-medium text-right">Joined</th>
+                                        <th className="px-8 py-4 text-left">Entity</th>
+                                        <th className="px-8 py-4 text-left">Identifier</th>
+                                        <th className="px-8 py-4 text-left">Current Protocol</th>
+                                        <th className="px-8 py-4 text-right">Actions</th>
                                     </tr>
                                 </thead>
-                                <tbody className="divide-y">
-                                    {recentUsers.map((user) => (
-                                        <tr key={user.id} className="hover:bg-muted/50 transition-colors">
-                                            <td className="px-4 py-3 font-medium">{user.username}</td>
-                                            <td className="px-4 py-3 text-muted-foreground">{user.email}</td>
-                                            <td className="px-4 py-3">
-                                                {user.isAdmin ? (
-                                                    <span className="inline-flex items-center rounded-full bg-primary/10 px-2 py-1 text-xs font-semibold text-primary">
-                                                        Admin
-                                                    </span>
-                                                ) : (
-                                                    <span className="inline-flex items-center rounded-full bg-muted px-2 py-1 text-xs font-medium">
-                                                        User
-                                                    </span>
-                                                )}
+                                <tbody className="divide-y divide-border/40">
+                                    {allUsers.map((u) => (
+                                        <tr key={u.id} className="hover:bg-primary/[0.02] transition-colors group">
+                                            <td className="px-8 py-5">
+                                                <div className="flex items-center gap-3">
+                                                    <Avatar className="h-10 w-10 border-2 border-primary/10 group-hover:border-primary/30 transition-all">
+                                                        <AvatarImage src={u.avatar || undefined} />
+                                                        <AvatarFallback className="font-black text-xs">{u.displayName?.[0] || u.username[0]}</AvatarFallback>
+                                                    </Avatar>
+                                                    <div>
+                                                        <p className="font-bold text-foreground text-base leading-none">{u.displayName}</p>
+                                                        <p className="text-xs text-muted-foreground mt-1">ID: {u.id}</p>
+                                                    </div>
+                                                </div>
                                             </td>
-                                            <td className="px-4 py-3 text-right text-muted-foreground">
-                                                {format(new Date(user.createdAt), 'MMM d, yyyy')}
+                                            <td className="px-8 py-5 text-muted-foreground font-medium">{u.email}</td>
+                                            <td className="px-8 py-5">
+                                                <Badge variant={u.role === 'super_admin' ? 'default' : u.role === 'admin' ? 'secondary' : 'outline'}
+                                                    className={`font-black uppercase tracking-tighter text-[10px] py-1 px-3 rounded-md ${u.role === 'super_admin' ? 'bg-primary' : ''}`}>
+                                                    {u.role || (u.isAdmin ? 'admin' : 'user')}
+                                                </Badge>
+                                            </td>
+                                            <td className="px-8 py-5 text-right space-x-2">
+                                                {u.id !== currentUser?.id && (
+                                                    <>
+                                                        {u.role !== 'admin' && (
+                                                            <Button size="sm" variant="ghost" className="h-9 px-3 text-[10px] font-black uppercase tracking-widest hover:bg-primary/10 hover:text-primary transition-all rounded-lg"
+                                                                onClick={() => roleMutation.mutate({ id: u.id, role: 'admin' })}
+                                                                disabled={roleMutation.isPending}>
+                                                                Make Admin
+                                                            </Button>
+                                                        )}
+                                                        {u.role === 'admin' && (
+                                                            <Button size="sm" variant="ghost" className="h-9 px-3 text-[10px] font-black uppercase tracking-widest hover:bg-destructive/10 hover:text-destructive transition-all rounded-lg"
+                                                                onClick={() => roleMutation.mutate({ id: u.id, role: 'user' })}
+                                                                disabled={roleMutation.isPending}>
+                                                                Demote
+                                                            </Button>
+                                                        )}
+                                                    </>
+                                                )}
                                             </td>
                                         </tr>
                                     ))}
-                                    {recentUsers.length === 0 && (
-                                        <tr>
-                                            <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">
-                                                No users found.
-                                            </td>
-                                        </tr>
-                                    )}
                                 </tbody>
                             </table>
                         </div>
                     </CardContent>
                 </Card>
+            )}
 
-                <Card className="bg-muted/30 border-dashed">
-                    <CardHeader>
-                        <CardTitle>System Health</CardTitle>
-                        <CardDescription>Automated diagnostic information.</CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                        <div className="flex items-center justify-between">
-                            <span className="text-sm font-medium">Database</span>
-                            <span className="text-sm text-green-500 font-bold flex items-center gap-1"><div className="h-2 w-2 rounded-full bg-green-500"></div> Connected</span>
+            {!isSuperAdmin && (
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <Card className="lg:col-span-2 rounded-[2rem] overflow-hidden border border-border/40">
+                        <CardHeader className="pb-4">
+                            <CardTitle className="flex items-center gap-3 text-2xl font-black">
+                                <Activity className="h-6 w-6 text-primary" />
+                                RECENT REGISTRATIONS
+                            </CardTitle>
+                            <CardDescription className="text-base font-medium">The 10 newest accounts created on the platform.</CardDescription>
+                        </CardHeader>
+                        <CardContent className="p-0">
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-sm">
+                                    <thead className="bg-muted/50 text-muted-foreground uppercase text-[10px] font-black tracking-widest border-b border-border/40">
+                                        <tr>
+                                            <th className="px-8 py-4 text-left">User</th>
+                                            <th className="px-8 py-4 text-left">Email</th>
+                                            <th className="px-8 py-4 text-right">Joined</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-border/40">
+                                        {recentUsers.map((user) => (
+                                            <tr key={user.id} className="hover:bg-muted/20 transition-colors">
+                                                <td className="px-8 py-5 font-bold text-base">{user.username}</td>
+                                                <td className="px-8 py-5 text-muted-foreground font-medium">{user.email}</td>
+                                                <td className="px-8 py-5 text-right text-muted-foreground font-medium">
+                                                    {format(new Date(user.createdAt), 'MMM d')}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    <Card className="bg-muted/20 border-border/40 rounded-[2rem] flex flex-col justify-center text-center p-8 space-y-6">
+                        <div className="h-20 w-20 rounded-full bg-primary/10 flex items-center justify-center text-primary mx-auto shadow-inner">
+                            <ShieldCheck className="h-10 w-10" />
                         </div>
-                        <div className="flex items-center justify-between">
-                            <span className="text-sm font-medium">AI Engine</span>
-                            <span className="text-sm text-green-500 font-bold flex items-center gap-1"><div className="h-2 w-2 rounded-full bg-green-500"></div> Online</span>
+                        <div className="space-y-2">
+                            <h3 className="text-2xl font-black tracking-tight uppercase">Limited Access</h3>
+                            <p className="text-muted-foreground font-medium">Detailed user orchestration is reserved for Super Admins. Contact the system administrator for root privileges.</p>
                         </div>
-                        <div className="flex items-center justify-between">
-                            <span className="text-sm font-medium">Node.js Memory</span>
-                            <span className="text-sm font-mono text-muted-foreground">Stable</span>
-                        </div>
-                    </CardContent>
-                </Card>
-            </div>
+                        <Button variant="outline" className="rounded-xl h-12 font-black uppercase tracking-widest transition-all" asChild>
+                            <a href="/api/auth/make-me-super-admin" target="_blank">Unlock Root (Debug)</a>
+                        </Button>
+                    </Card>
+                </div>
+            )}
         </div>
     );
 }

@@ -24,6 +24,7 @@ import ProfilePage from "@/pages/profile";
 import GroupsPage from "@/pages/groups";
 import GroupDetailPage from "@/pages/group-detail";
 import ResourcesPage from "@/pages/resources";
+import QuizBattlePage from "@/pages/quiz-battle";
 import AdminDashboard from "@/pages/admin";
 
 function AppRouter() {
@@ -39,6 +40,7 @@ function AppRouter() {
       <Route path="/groups" component={GroupsPage} />
       <Route path="/groups/:id" component={GroupDetailPage} />
       <Route path="/resources" component={ResourcesPage} />
+      <Route path="/quizzes/:id" component={QuizBattlePage} />
       <Route path="/admin" component={AdminDashboard} />
       <Route path="/auth">{() => <Redirect to="/" />}</Route>
       <Route component={NotFound} />

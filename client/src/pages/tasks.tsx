@@ -237,6 +237,8 @@ function TaskForm({
   );
 }
 
+import { Sparkles, Loader2 } from "lucide-react";
+
 function TaskCard({
   task,
   subject,
@@ -252,6 +254,23 @@ function TaskCard({
   onToggle: () => void;
   onDelete: () => void;
 }) {
+  const [isBreakingDown, setIsBreakingDown] = useState(false);
+  const [subtasks, setSubtasks] = useState<string[]>([]);
+  const { toast } = useToast();
+
+  const handleBreakDown = async () => {
+    try {
+      setIsBreakingDown(true);
+      const res = await apiRequest("POST", `/api/tasks/${task.id}/breakdown`);
+      const data = await res.json();
+      setSubtasks(data);
+    } catch (error) {
+      toast({ title: "Breakdown failed", variant: "destructive" });
+    } finally {
+      setIsBreakingDown(false);
+    }
+  };
+
   const priority = PRIORITIES[task.priority as keyof typeof PRIORITIES] || PRIORITIES.medium;
   const PriorityIcon = priority.icon;
   const deadline = task.deadline ? new Date(task.deadline) : null;
@@ -262,67 +281,83 @@ function TaskCard({
 
   return (
     <div
-      className={`flex items-start gap-3 rounded-md border p-4 transition-all duration-200 hover:border-primary/30 ${task.status === "completed" ? "opacity-60" : ""
-        }`}
+      className={`relative flex flex-col gap-3 rounded-[1.25rem] border p-5 transition-all duration-300 hover:border-primary/50 hover:shadow-xl bg-card group ${task.status === "completed" ? "opacity-60 bg-muted/20" : "shadow-md"}`}
       data-testid={`card-task-${task.id}`}
     >
-      <Checkbox
-        checked={task.status === "completed"}
-        onCheckedChange={onToggle}
-        className="mt-0.5"
-        data-testid={`checkbox-task-${task.id}`}
-      />
-      <div className="flex-1 min-w-0 space-y-1">
-        <div className="flex items-center gap-2 flex-wrap">
-          <p
-            className={`text-sm font-medium ${task.status === "completed" ? "line-through text-muted-foreground" : ""
-              }`}
-          >
-            {task.title}
-          </p>
-          <PriorityIcon className={`h-3.5 w-3.5 shrink-0 ${priority.className}`} />
-        </div>
-        {task.description && (
-          <p className="text-xs text-muted-foreground line-clamp-2">{task.description}</p>
-        )}
-        <div className="flex items-center gap-3 flex-wrap text-xs text-muted-foreground">
-          {subject && (
-            <span className="flex items-center gap-1">
-              <div
-                className="h-2 w-2 rounded-full"
-                style={{ backgroundColor: subject.color }}
-              />
-              {subject.name}
-            </span>
-          )}
-          {group && (
-            <Badge variant="secondary" className="text-[10px] py-0 h-4 gap-1 rounded-full opacity-70">
-              <Users className="h-2.5 w-2.5" />
-              {group.name}
+      <div className="flex items-start gap-4">
+        <Checkbox
+          checked={task.status === "completed"}
+          onCheckedChange={onToggle}
+          className="mt-1 h-5 w-5 rounded-full border-2"
+          data-testid={`checkbox-task-${task.id}`}
+        />
+        <div className="flex-1 min-w-0 space-y-2">
+          <div className="flex items-center gap-3 flex-wrap">
+            <p className={`text-base font-black tracking-tight ${task.status === "completed" ? "line-through text-muted-foreground" : "text-foreground"}`}>
+              {task.title}
+            </p>
+            <Badge variant="outline" className={`h-5 border-none px-2 font-black text-[9px] uppercase tracking-widest ${priority.className.replace("text-", "bg-").replace("500", "500/10") + " " + priority.className}`}>
+              {task.priority}
             </Badge>
+          </div>
+          {task.description && (
+            <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed font-medium">{task.description}</p>
           )}
-          {deadline && (
-            <span className={`flex items-center gap-1 ${isOverdue ? "text-red-500" : ""}`}>
-              <Calendar className="h-3 w-3" />
-              {deadline.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-              {isOverdue && " (overdue)"}
-            </span>
+
+          {subtasks.length > 0 && (
+            <div className="mt-4 p-4 rounded-2xl bg-primary/5 border border-primary/10 space-y-2 animate-in slide-in-from-top-2 duration-300">
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-primary/60 mb-2 flex items-center gap-2">
+                <Sparkles className="h-3 w-3" /> AI Breakdown
+              </p>
+              {subtasks.map((step, idx) => (
+                <div key={idx} className="flex gap-3 text-sm font-semibold text-foreground/80">
+                  <span className="text-primary font-black opacity-30">{idx + 1}</span>
+                  {step}
+                </div>
+              ))}
+            </div>
           )}
-          {task.estimatedMinutes && (
-            <span className="flex items-center gap-1">
-              <Clock className="h-3 w-3" />
-              {task.estimatedMinutes}min
-            </span>
-          )}
+
+          <div className="flex items-center gap-4 flex-wrap text-xs font-bold pt-1">
+            {subject && (
+              <span className="flex items-center gap-2 bg-muted/40 px-3 py-1.5 rounded-full border border-border/40">
+                <div className="h-2 w-2 rounded-full" style={{ backgroundColor: subject.color }} />
+                {subject.name}
+              </span>
+            )}
+            {group && (
+              <Badge variant="secondary" className="px-3 py-1.5 h-auto gap-2 rounded-full font-black text-[10px] uppercase border-none bg-primary/5 text-primary">
+                <Users className="h-3 w-3" />
+                {group.name}
+              </Badge>
+            )}
+            {deadline && (
+              <span className={`flex items-center gap-2 px-3 py-1.5 rounded-full bg-muted/40 border border-border/40 ${isOverdue ? "text-red-500 border-red-500/20 bg-red-500/5" : "text-muted-foreground"}`}>
+                <Calendar className="h-3.5 w-3.5" />
+                {deadline.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                {isOverdue && <span className="text-[9px] uppercase font-black ml-1">(overdue)</span>}
+              </span>
+            )}
+            {task.estimatedMinutes && (
+              <span className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-muted/40 border border-border/40 text-muted-foreground">
+                <Clock className="h-3.5 w-3.5" />
+                {task.estimatedMinutes}m
+              </span>
+            )}
+          </div>
         </div>
-      </div>
-      <div className="flex items-center gap-1 shrink-0">
-        <Button size="icon" variant="ghost" onClick={onEdit} aria-label="Edit task" data-testid={`button-edit-task-${task.id}`}>
-          <Pencil className="h-3.5 w-3.5" />
-        </Button>
-        <Button size="icon" variant="ghost" onClick={onDelete} aria-label="Delete task" data-testid={`button-delete-task-${task.id}`}>
-          <Trash2 className="h-3.5 w-3.5" />
-        </Button>
+
+        <div className="flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-all duration-300 -mr-2">
+          <Button size="icon" variant="ghost" className="h-8 w-8 rounded-lg hover:bg-primary/10 hover:text-primary" onClick={handleBreakDown} disabled={isBreakingDown}>
+            {isBreakingDown ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+          </Button>
+          <Button size="icon" variant="ghost" className="h-8 w-8 rounded-lg hover:bg-primary/10 hover:text-primary" onClick={onEdit}>
+            <Pencil className="h-4 w-4" />
+          </Button>
+          <Button size="icon" variant="ghost" className="h-8 w-8 rounded-lg hover:bg-red-500/10 hover:text-red-600" onClick={onDelete}>
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
     </div>
   );

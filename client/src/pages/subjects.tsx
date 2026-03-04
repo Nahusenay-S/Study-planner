@@ -126,8 +126,8 @@ function SubjectForm({
               type="button"
               onClick={() => setIcon(key)}
               className={`flex h-9 w-9 items-center justify-center rounded-md transition-all ${icon === key
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-muted text-muted-foreground hover-elevate"
+                ? "bg-primary text-primary-foreground"
+                : "bg-muted text-muted-foreground hover-elevate"
                 }`}
               data-testid={`icon-option-${key}`}
             >

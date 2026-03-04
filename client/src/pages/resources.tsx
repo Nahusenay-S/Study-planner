@@ -135,13 +135,10 @@ function QuizSection({ resourceId, title }: { resourceId: number, title: string 
     const [quiz, setQuiz] = useState<{ question: string, options: string[], correctIndex: number }[] | null>(null);
     const [selectedAnswers, setSelectedAnswers] = useState<number[]>([]);
     const [showResults, setShowResults] = useState(false);
-    const [quizCount, setQuizCount] = useState(5);
 
     const quizMutation = useMutation({
         mutationFn: async () => {
-            const res = await apiRequest("POST", `/api/resources/${resourceId}/quiz`, {
-                count: quizCount
-            });
+            const res = await apiRequest("POST", `/api/resources/${resourceId}/quiz`);
             return res.json();
         },
         onSuccess: (data) => {
@@ -162,25 +159,11 @@ function QuizSection({ resourceId, title }: { resourceId: number, title: string 
     );
 
     if (!quiz) return (
-        <div className="pt-4 border-t border-border/40 mt-4 space-y-4">
-            <div className="space-y-1.5">
-                <Label className="text-[10px] uppercase font-bold text-muted-foreground ml-1">Number of Questions</Label>
-                <Select value={quizCount.toString()} onValueChange={(v) => setQuizCount(parseInt(v))}>
-                    <SelectTrigger className="h-9 rounded-lg text-xs bg-muted/30 border-border/50">
-                        <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                        {[3, 5, 8, 10].map(n => <SelectItem key={n} value={n.toString()}>{n} Multiple Choice Questions</SelectItem>)}
-                    </SelectContent>
-                </Select>
-            </div>
-
-            <div className="flex flex-col items-center justify-center py-2">
-                <Button className="w-full gap-2 rounded-xl" onClick={() => quizMutation.mutate()}>
-                    <HelpCircle className="h-4 w-4" /> Generate Practice Quiz
-                </Button>
-                <p className="text-[10px] text-muted-foreground mt-2 uppercase tracking-widest font-bold">Standard Multiple Choice</p>
-            </div>
+        <div className="flex flex-col items-center justify-center py-6 border-t border-border/40 mt-4">
+            <Button variant="outline" size="sm" className="gap-2 border-primary/20 text-primary" onClick={() => quizMutation.mutate()}>
+                <HelpCircle className="h-4 w-4" /> Generate Practice Quiz
+            </Button>
+            <p className="text-[10px] text-muted-foreground mt-2 uppercase tracking-widest font-bold">5 MCQs from your resource</p>
         </div>
     );
 
@@ -368,7 +351,7 @@ function AddResourceDialog({ open, onOpenChange, subjects, groups }: { open: boo
                                 render={({ field }) => (
                                     <FormItem>
                                         <FormLabel>Subject</FormLabel>
-                                        <Select onValueChange={(v) => field.onChange(v === "null" ? null : parseInt(v))} value={String(field.value || "null")}>
+                                        <Select onValueChange={(v) => field.onChange(v === "null" ? null : parseInt(v))} value={field.value !== null && field.value !== undefined ? String(field.value) : "null"}>
                                             <FormControl><SelectTrigger className="rounded-xl"><SelectValue placeholder="General / No Subject" /></SelectTrigger></FormControl>
                                             <SelectContent>
                                                 <SelectItem value="null">General / No Subject</SelectItem>
@@ -421,10 +404,10 @@ function AddResourceDialog({ open, onOpenChange, subjects, groups }: { open: boo
                                 render={({ field }) => (
                                     <FormItem>
                                         <FormLabel>Share to Group</FormLabel>
-                                        <Select onValueChange={(v) => field.onChange(v === "null" ? null : parseInt(v))} value={String(field.value || "null")}>
-                                            <FormControl><SelectTrigger className="rounded-xl"><SelectValue placeholder="Personal Only" /></SelectTrigger></FormControl>
+                                        <Select onValueChange={(v) => field.onChange(v === "null" ? null : parseInt(v))} value={field.value !== null && field.value !== undefined ? String(field.value) : "null"}>
+                                            <FormControl><SelectTrigger className="rounded-xl"><SelectValue placeholder="No Group (Private)" /></SelectTrigger></FormControl>
                                             <SelectContent>
-                                                <SelectItem value="null">Personal Only</SelectItem>
+                                                <SelectItem value="null">No Group (Private)</SelectItem>
                                                 {groups.map(g => <SelectItem key={g.id} value={g.id.toString()}>{g.name}</SelectItem>)}
                                             </SelectContent>
                                         </Select>

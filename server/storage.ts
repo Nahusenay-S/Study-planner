@@ -6,7 +6,9 @@ import {
   type StudyGroup, type InsertStudyGroup, type GroupMember,
   type Comment, type InsertComment, type Notification,
   users, subjects, tasks, pomodoroSessions, resources,
-  studyGroups, groupMembers, comments, notifications
+  studyGroups, groupMembers, comments, notifications,
+  groupMessages, quizzes, quizQuestions, quizResults,
+  type GroupMessage, type Quiz, type QuizQuestion, type QuizResult
 } from "@shared/schema";
 import { eq, and, or, desc, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
@@ -60,17 +62,27 @@ export interface IStorage {
   getStudyGroup(id: number): Promise<StudyGroup | undefined>;
   getStudyGroupByInviteCode(inviteCode: string): Promise<StudyGroup | undefined>;
   joinStudyGroup(userId: number, groupId: number, role?: string): Promise<GroupMember>;
-  getGroupMembers(groupId: number): Promise<(GroupMember & { user: { id: number, username: string, email: string, displayName: string | null, avatar: string | null } })[]>;
+  getGroupMembers(groupId: number): Promise<(GroupMember & { user: { id: number, username: string, email: string, displayName: string | null, avatar: string | null, bio: string | null } })[]>;
   isGroupMember(userId: number, groupId: number): Promise<boolean>;
 
   // Comments (Phase 2)
-  getComments(resourceId: number): Promise<(Comment & { user: { id: number, username: string, displayName: string | null, avatar: string | null } })[]>;
+  getComments(resourceId: number): Promise<(Comment & { user: { id: number, username: string, displayName: string | null, avatar: string | null, bio: string | null } })[]>;
   createComment(userId: number, comment: InsertComment): Promise<Comment>;
 
   // Notifications (Phase 2)
   getNotifications(userId: number): Promise<Notification[]>;
   createNotification(userId: number, notification: { title: string; message: string; type: string }): Promise<Notification>;
   markNotificationRead(id: number, userId: number): Promise<boolean>;
+
+  // Premium Group Features (Phase 3)
+  getGroupMessages(groupId: number): Promise<(GroupMessage & { user: { username: string, avatar: string | null } })[]>;
+  createGroupMessage(userId: number, groupId: number, content: string, replyToId?: number): Promise<GroupMessage>;
+  getQuizzes(groupId?: number): Promise<Quiz[]>;
+  getQuiz(id: number): Promise<Quiz | undefined>;
+  getQuizQuestions(quizId: number): Promise<QuizQuestion[]>;
+  createQuiz(data: any, questions: any[]): Promise<Quiz>;
+  submitQuizResult(userId: number, data: any): Promise<QuizResult>;
+  getGroupLeaderboard(groupId: number): Promise<{ username: string, streakCount: number, productivityScore: number, totalStudyMinutes: number, avatar: string | null }[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -162,17 +174,13 @@ export class DatabaseStorage implements IStorage {
     if (groupIds.length > 0) {
       return await db.select().from(resources).where(
         or(
-          eq(resources.isPublic, 1),
           eq(resources.userId, userId),
           inArray(resources.groupId, groupIds)
         )
       );
     } else {
       return await db.select().from(resources).where(
-        or(
-          eq(resources.isPublic, 1),
-          eq(resources.userId, userId)
-        )
+        eq(resources.userId, userId)
       );
     }
   }
@@ -246,7 +254,7 @@ export class DatabaseStorage implements IStorage {
     return member;
   }
 
-  async getGroupMembers(groupId: number): Promise<(GroupMember & { user: { id: number, username: string, email: string, displayName: string | null, avatar: string | null } })[]> {
+  async getGroupMembers(groupId: number): Promise<(GroupMember & { user: { id: number, username: string, email: string, displayName: string | null, avatar: string | null, bio: string | null } })[]> {
     const results = await db.select({
       member: groupMembers,
       user: users
@@ -261,7 +269,8 @@ export class DatabaseStorage implements IStorage {
         username: r.user.username,
         email: r.user.email,
         displayName: r.user.displayName,
-        avatar: r.user.avatar
+        avatar: r.user.avatar,
+        bio: r.user.bio
       }
     }));
   }
@@ -272,7 +281,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Comments (Phase 2)
-  async getComments(resourceId: number): Promise<(Comment & { user: { id: number, username: string, displayName: string | null, avatar: string | null } })[]> {
+  async getComments(resourceId: number): Promise<(Comment & { user: { id: number, username: string, displayName: string | null, avatar: string | null, bio: string | null } })[]> {
     const results = await db.select({
       comment: comments,
       user: users
@@ -287,7 +296,8 @@ export class DatabaseStorage implements IStorage {
         id: r.user.id,
         username: r.user.username,
         displayName: r.user.displayName,
-        avatar: r.user.avatar
+        avatar: r.user.avatar,
+        bio: r.user.bio
       }
     }));
   }
@@ -321,6 +331,102 @@ export class DatabaseStorage implements IStorage {
       .where(and(eq(notifications.id, id), eq(notifications.userId, userId)))
       .returning();
     return result.length > 0;
+  }
+
+  // Premium Group Features (Phase 3)
+  async getGroupMessages(groupId: number): Promise<(GroupMessage & { user: { username: string, avatar: string | null } })[]> {
+    const results = await db.select({
+      message: groupMessages,
+      user: users
+    }).from(groupMessages)
+      .innerJoin(users, eq(groupMessages.userId, users.id))
+      .where(eq(groupMessages.groupId, groupId))
+      .orderBy(desc(groupMessages.id));
+
+    return results.map(r => ({
+      ...r.message,
+      user: {
+        username: r.user.username,
+        avatar: r.user.avatar
+      }
+    }));
+  }
+
+  async createGroupMessage(userId: number, groupId: number, content: string, replyToId?: number): Promise<GroupMessage> {
+    const [message] = await db.insert(groupMessages).values({
+      userId,
+      groupId,
+      content,
+      replyToId: replyToId || null
+    }).returning();
+    return message;
+  }
+
+  async getQuizzes(groupId?: number, userId?: number): Promise<Quiz[]> {
+    if (groupId) {
+      return await db.select().from(quizzes).where(eq(quizzes.groupId, groupId));
+    }
+    if (userId) {
+      const userGroups = await db.select().from(groupMembers).where(eq(groupMembers.userId, userId));
+      const groupIds = userGroups.map(g => g.groupId);
+
+      if (groupIds.length > 0) {
+        return await db.select().from(quizzes).where(
+          or(
+            eq(quizzes.userId, userId),
+            inArray(quizzes.groupId, groupIds)
+          )
+        );
+      }
+      return await db.select().from(quizzes).where(eq(quizzes.userId, userId));
+    }
+    return await db.select().from(quizzes);
+  }
+
+  async getQuiz(id: number): Promise<Quiz | undefined> {
+    const [quiz] = await db.select().from(quizzes).where(eq(quizzes.id, id));
+    return quiz;
+  }
+
+  async getQuizQuestions(quizId: number): Promise<QuizQuestion[]> {
+    return await db.select().from(quizQuestions).where(eq(quizQuestions.quizId, quizId));
+  }
+
+  async createQuiz(data: any, questions: any[]): Promise<Quiz> {
+    const [quiz] = await db.insert(quizzes).values(data).returning();
+    if (questions.length > 0) {
+      await db.insert(quizQuestions).values(
+        questions.map(q => ({
+          quizId: quiz.id,
+          question: q.question,
+          options: JSON.stringify(q.options),
+          correctAnswer: q.correctAnswer,
+          correctIndex: q.correctIndex,
+          explanation: q.explanation
+        }))
+      );
+    }
+    return quiz;
+  }
+
+  async submitQuizResult(userId: number, data: any): Promise<QuizResult> {
+    const [result] = await db.insert(quizResults).values({ ...data, userId }).returning();
+    return result;
+  }
+
+  async getGroupLeaderboard(groupId: number): Promise<{ username: string, streakCount: number, productivityScore: number, totalStudyMinutes: number, avatar: string | null }[]> {
+    const members = await db.select({
+      username: users.username,
+      streakCount: users.streakCount,
+      productivityScore: users.productivityScore,
+      totalStudyMinutes: users.totalStudyMinutes,
+      avatar: users.avatar
+    }).from(groupMembers)
+      .innerJoin(users, eq(groupMembers.userId, users.id))
+      .where(eq(groupMembers.groupId, groupId))
+      .orderBy(desc(users.streakCount));
+
+    return members;
   }
 }
 

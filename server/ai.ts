@@ -110,51 +110,58 @@ export async function chatWithAI(message: string, history: { role: string; conte
     }
 }
 
-export async function generateQuiz(content: string, title: string, options?: { count?: number }) {
+export async function generateQuiz(content: string, title: string) {
     try {
-        const count = options?.count || 5;
-
-        log(`[AI] Quiz Request: ${count} questions (Multiple Choice) for "${title}"`, "ai");
-
         const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "placeholder-key");
-        const model = genAI.getGenerativeModel({
-            model: "gemini-1.5-flash",
-            generationConfig: {
-                responseMimeType: "application/json",
-            },
-            systemInstruction: `You are a strict educational quiz generator. 
-            CORE RULE: Generate exactly ${count} multiple-choice questions based on the content.
-            CORE RULE: Each question MUST have EXACTLY FOUR distinct options.
-            Response format: JSON array of objects.
-            JSON Schema: Array<{ "question": string, "options": string[], "correctIndex": number }>`
-        });
+        const model = genAI.getGenerativeModel({ model: "models/gemini-2.5-flash" });
 
-        const prompt = `Generate a 4-option multiple-choice quiz for "${title}". Resource Content: ${content.substring(0, 5000)}`;
+        const prompt = `
+            Based on the following study resource titled "${title}", generate a quiz.
+            Return exactly 5 multiple choice questions in a JSON array.
+            Each object must have: "question", "options" (array of 4 strings), and "correctIndex" (0-3).
+            
+            Content:
+            ${content.substring(0, 5000)}
+        `;
 
         const result = await model.generateContent(prompt);
         const response = await result.response;
         const text = response.text();
-
-        try {
-            let parsedQuiz = JSON.parse(text);
-            if (!Array.isArray(parsedQuiz)) {
-                const firstKey = Object.keys(parsedQuiz)[0];
-                if (Array.isArray(parsedQuiz[firstKey])) {
-                    parsedQuiz = parsedQuiz[firstKey];
-                }
-            }
-            return parsedQuiz.slice(0, count);
-        } catch (e) {
-            log(`[AI] JSON Parse Fail: ${text.substring(0, 100)}...`, "ai");
-            throw new Error("Invalid AI structure received");
+        const jsonMatch = text.match(/\[[\s\S]*\]/);
+        if (jsonMatch) {
+            return JSON.parse(jsonMatch[0]);
         }
+        throw new Error("Invalid AI quiz format");
     } catch (error) {
         log(`AI quiz generation error: ${error}`, "ai");
-        const fallbackCount = options?.count || 5;
-        return Array(fallbackCount).fill(null).map((_, i) => ({
-            question: `Concept Question ${i + 1} for "${title}"?`,
-            options: ["Core Definition", "Common Application", "Practical Case", "Further Study"],
-            correctIndex: 0
-        }));
+
+        // Graceful Fallback
+        return [
+            {
+                question: `What is the primary focus of "${title}"?`,
+                options: ["Option A", "The central thesis of the text", "Option C", "Option D"],
+                correctIndex: 1
+            },
+            {
+                question: `"AI Generation Unavailable: Fallback Question 2"`,
+                options: ["A", "B", "C", "D"],
+                correctIndex: 0
+            },
+            {
+                question: `"AI Generation Unavailable: Fallback Question 3"`,
+                options: ["A", "B", "C", "D"],
+                correctIndex: 2
+            },
+            {
+                question: `"AI Generation Unavailable: Fallback Question 4"`,
+                options: ["A", "B", "C", "D"],
+                correctIndex: 3
+            },
+            {
+                question: `"AI Generation Unavailable: Fallback Question 5"`,
+                options: ["A", "B", "C", "D"],
+                correctIndex: 1
+            }
+        ];
     }
 }

@@ -8,7 +8,7 @@ import fs from "fs";
 import { storage, db } from "./storage";
 import { registerSchema, loginSchema, insertSubjectSchema, insertTaskSchema, insertPomodoroSessionSchema, insertResourceSchema, updateProfileSchema, insertStudyGroupSchema, insertCommentSchema, users, studyGroups, resources, tasks } from "@shared/schema";
 import { z } from "zod";
-import { sql } from "drizzle-orm";
+import { sql, eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { generateStudySchedule, summarizeResource, calculateReadinessScore, chatWithAI, generateQuiz } from "./ai";
 import { differenceInDays, parseISO, startOfDay } from "date-fns";
@@ -81,6 +81,15 @@ async function requireAdmin(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
+async function requireSuperAdmin(req: Request, res: Response, next: NextFunction) {
+  if (!req.session.userId) return res.status(401).json({ message: "Not authenticated" });
+  const user = await storage.getUserById(req.session.userId);
+  if (!user || user.role !== 'super_admin') {
+    return res.status(403).json({ message: "Access denied. Super Admin only." });
+  }
+  next();
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -147,11 +156,36 @@ export async function registerRoutes(
     });
   });
 
-  // Demo Endpoint to grant user Admin Access
-  app.get("/api/auth/make-me-admin", async (req, res) => {
-    // Elevate all users or just the current user (using db.update without where makes everyone admin for demo)
-    await db.update(users).set({ isAdmin: 1 });
-    res.json({ message: "You are now a System Admin! Please refresh the page to see the new dashboard." });
+  // Super Admin: Elevate current user to Super Admin
+  app.get("/api/auth/make-me-super-admin", async (req, res) => {
+    if (!req.session.userId) return res.status(401).json({ message: "Not authenticated" });
+    await db.update(users).set({ role: 'super_admin', isAdmin: 1 }).where(eq(users.id, req.session.userId));
+    res.json({ message: "You are now a Super Admin! Reload the dashboard for root access." });
+  });
+
+  // Admin Management (Super Admin only)
+  app.get("/api/admin/users", requireSuperAdmin, async (req, res) => {
+    const allUsers = await db.select({
+      id: users.id,
+      username: users.username,
+      email: users.email,
+      role: users.role,
+      isAdmin: users.isAdmin,
+      displayName: users.displayName,
+      avatar: users.avatar,
+    }).from(users);
+    res.json(allUsers);
+  });
+
+  app.patch("/api/admin/users/:id/role", requireSuperAdmin, async (req, res) => {
+    const id = parseInt(String(req.params.id));
+    const { role } = req.body;
+    if (!['super_admin', 'admin', 'user'].includes(role)) {
+      return res.status(400).json({ message: "Invalid role" });
+    }
+    const isAdmin = role === 'admin' || role === 'super_admin' ? 1 : 0;
+    const updated = await storage.updateUser(id, { role, isAdmin });
+    res.json(updated);
   });
 
   // System Admin Endpoints
@@ -236,7 +270,7 @@ export async function registerRoutes(
       const existingUser = await storage.getUserById(req.session.userId!);
       if (existingUser?.avatar) safeDeleteAvatar(existingUser.avatar);
 
-      const avatarUrl = `/ uploads / avatars / ${req.file.filename}`;
+      const avatarUrl = `/uploads/avatars/${req.file.filename}`;
       const user = await storage.updateUser(req.session.userId!, { avatar: avatarUrl });
       if (!user) return res.status(404).json({ message: "User not found" });
       const { password, ...safeUser } = user;
@@ -509,6 +543,38 @@ export async function registerRoutes(
     res.json(group);
   });
 
+  app.post("/api/groups/:id/invite", requireAuth, async (req, res) => {
+    const groupId = parseInt(String(req.params.id));
+    const { identifier } = req.body; // username or email
+
+    if (!identifier) return res.status(400).json({ message: "User identifier required" });
+
+    // Ensure inviter is a member
+    const inviterIsMember = await storage.isGroupMember(req.session.userId!, groupId);
+    if (!inviterIsMember) return res.status(403).json({ message: "Access denied" });
+
+    // Find the target user
+    let targetUser = await storage.getUserByEmail(identifier);
+    if (!targetUser) {
+      const [userByUsername] = await db.select().from(users).where(eq(users.username, identifier));
+      targetUser = userByUsername;
+    }
+
+    if (!targetUser) return res.status(404).json({ message: "User not found" });
+
+    const isMember = await storage.isGroupMember(targetUser.id, groupId);
+    if (isMember) return res.status(400).json({ message: "User is already a member" });
+
+    // Create a notification/invite
+    await storage.createNotification(targetUser.id, {
+      title: "Group Invitation",
+      message: `You've been invited to join group: ${(await storage.getStudyGroup(groupId))?.name}. Use code to join.`,
+      type: "group"
+    });
+
+    res.json({ message: "Invitation sent successfully" });
+  });
+
   app.get("/api/groups/:id/members", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id));
     const member = await storage.isGroupMember(req.session.userId!, id);
@@ -643,12 +709,11 @@ export async function registerRoutes(
   app.post("/api/resources/:id/quiz", requireAuth, async (req, res) => {
     try {
       const id = parseInt(String(req.params.id));
-      const { count, type } = req.body;
       const resource = await storage.getResource(id);
       if (!resource) return res.status(404).json({ message: "Resource not found" });
 
       const content = resource.description || `Study material for ${resource.title}`;
-      const quiz = await generateQuiz(content, resource.title, { count, type });
+      const quiz = await generateQuiz(content, resource.title);
       res.json(quiz);
     } catch (error) {
       res.status(500).json({ message: "Failed to generate AI quiz" });
@@ -706,6 +771,80 @@ export async function registerRoutes(
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch insights" });
     }
+  });
+
+  // Quizzes & Battles (Phase 3)
+  app.get("/api/quizzes", requireAuth, async (req, res) => {
+    const groupId = req.query.groupId ? parseInt(String(req.query.groupId)) : undefined;
+    const quizzes = await storage.getQuizzes(groupId, req.session.userId!);
+    res.json(quizzes);
+  });
+
+  app.get("/api/quizzes/:id", requireAuth, async (req, res) => {
+    const id = parseInt(String(req.params.id));
+    const quiz = await storage.getQuiz(id);
+    if (!quiz) return res.status(404).json({ message: "Quiz not found" });
+
+    const questions = await storage.getQuizQuestions(id);
+    res.json({ ...quiz, questions });
+  });
+
+  app.post("/api/quizzes/:id/submit", requireAuth, async (req, res) => {
+    const quizId = parseInt(String(req.params.id));
+    const result = await storage.submitQuizResult(req.session.userId!, {
+      quizId,
+      score: req.body.score,
+      totalQuestions: req.body.totalQuestions
+    });
+    res.json(result);
+  });
+
+  app.post("/api/resources/:id/create-quiz", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(String(req.params.id));
+      const resource = await storage.getResource(id);
+      if (!resource) return res.status(404).json({ message: "Resource not found" });
+
+      const { title, count, difficulty, groupId, isBattle } = req.body;
+      const content = resource.description || `Study material for ${resource.title}`;
+      const generated = await generateQuiz(content, title || resource.title);
+
+      const quizData = {
+        title: title || resource.title,
+        description: `Quiz based on ${resource.title}`,
+        userId: req.session.userId!,
+        groupId: groupId || null,
+        resourceId: id,
+        difficulty: difficulty || "medium",
+        isBattle: isBattle ? 1 : 0
+      };
+
+      const quiz = await storage.createQuiz(quizData, generated.slice(0, count || 5));
+      res.status(201).json(quiz);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to generate AI quiz" });
+    }
+  });
+
+  app.get("/api/groups/:id/leaderboard", requireAuth, async (req, res) => {
+    const groupId = parseInt(String(req.params.id));
+    const leaderboard = await storage.getGroupLeaderboard(groupId);
+    res.json(leaderboard);
+  });
+
+  app.get("/api/groups/:id/messages", requireAuth, async (req, res) => {
+    const groupId = parseInt(String(req.params.id));
+    const messages = await storage.getGroupMessages(groupId);
+    res.json(messages);
+  });
+
+  app.post("/api/groups/:id/messages", requireAuth, async (req, res) => {
+    const groupId = parseInt(String(req.params.id));
+    const { content, replyToId } = req.body;
+    if (!content) return res.status(400).json({ message: "Content required" });
+
+    const message = await storage.createGroupMessage(req.session.userId!, groupId, content, replyToId);
+    res.status(201).json(message);
   });
 
   return httpServer;

@@ -7,8 +7,8 @@ import {
   type Comment, type InsertComment, type Notification,
   users, subjects, tasks, pomodoroSessions, resources,
   studyGroups, groupMembers, comments, notifications,
-  groupMessages, quizzes, quizQuestions, quizResults,
-  type GroupMessage, type Quiz, type QuizQuestion, type QuizResult
+  groupMessages, quizzes, quizQuestions, quizResults, userActivities,
+  type GroupMessage, type Quiz, type QuizQuestion, type QuizResult, type UserActivity
 } from "@shared/schema";
 import { eq, and, or, desc, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
@@ -64,6 +64,7 @@ export interface IStorage {
   joinStudyGroup(userId: number, groupId: number, role?: string): Promise<GroupMember>;
   getGroupMembers(groupId: number): Promise<(GroupMember & { user: { id: number, username: string, email: string, displayName: string | null, avatar: string | null, bio: string | null } })[]>;
   isGroupMember(userId: number, groupId: number): Promise<boolean>;
+  updateStudyGroup(id: number, data: { name?: string; description?: string; avatarUrl?: string }): Promise<StudyGroup | undefined>;
 
   // Comments (Phase 2)
   getComments(resourceId: number): Promise<(Comment & { user: { id: number, username: string, displayName: string | null, avatar: string | null, bio: string | null } })[]>;
@@ -73,16 +74,25 @@ export interface IStorage {
   getNotifications(userId: number): Promise<Notification[]>;
   createNotification(userId: number, notification: { title: string; message: string; type: string }): Promise<Notification>;
   markNotificationRead(id: number, userId: number): Promise<boolean>;
+  markAllNotificationsRead(userId: number): Promise<boolean>;
+  clearNotifications(userId: number): Promise<boolean>;
 
   // Premium Group Features (Phase 3)
   getGroupMessages(groupId: number): Promise<(GroupMessage & { user: { username: string, avatar: string | null } })[]>;
   createGroupMessage(userId: number, groupId: number, content: string, replyToId?: number): Promise<GroupMessage>;
+  editGroupMessage(id: number, userId: number, content: string): Promise<GroupMessage | undefined>;
+  deleteGroupMessage(id: number, userId: number): Promise<boolean>;
   getQuizzes(groupId?: number): Promise<Quiz[]>;
   getQuiz(id: number): Promise<Quiz | undefined>;
   getQuizQuestions(quizId: number): Promise<QuizQuestion[]>;
   createQuiz(data: any, questions: any[]): Promise<Quiz>;
   submitQuizResult(userId: number, data: any): Promise<QuizResult>;
   getGroupLeaderboard(groupId: number): Promise<{ username: string, streakCount: number, productivityScore: number, totalStudyMinutes: number, avatar: string | null }[]>;
+
+  // Activity Tracking
+  getUserActivities(userId: number): Promise<UserActivity[]>;
+  createUserActivity(userId: number, data: { type: string; points: number; description?: string }): Promise<UserActivity>;
+  updateUserStreak(userId: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -254,6 +264,15 @@ export class DatabaseStorage implements IStorage {
     return member;
   }
 
+  async updateStudyGroup(id: number, data: { name?: string; description?: string; avatarUrl?: string }): Promise<StudyGroup | undefined> {
+    const updates: any = {};
+    if (data.name !== undefined) updates.name = data.name;
+    if (data.description !== undefined) updates.description = data.description;
+    if (data.avatarUrl !== undefined) updates.avatarUrl = data.avatarUrl;
+    const [updated] = await db.update(studyGroups).set(updates).where(eq(studyGroups.id, id)).returning();
+    return updated;
+  }
+
   async getGroupMembers(groupId: number): Promise<(GroupMember & { user: { id: number, username: string, email: string, displayName: string | null, avatar: string | null, bio: string | null } })[]> {
     const results = await db.select({
       member: groupMembers,
@@ -333,6 +352,21 @@ export class DatabaseStorage implements IStorage {
     return result.length > 0;
   }
 
+  async markAllNotificationsRead(userId: number): Promise<boolean> {
+    const result = await db.update(notifications)
+      .set({ isRead: 1 })
+      .where(and(eq(notifications.userId, userId), eq(notifications.isRead, 0)))
+      .returning();
+    return result.length > 0;
+  }
+
+  async clearNotifications(userId: number): Promise<boolean> {
+    const result = await db.delete(notifications)
+      .where(eq(notifications.userId, userId))
+      .returning();
+    return result.length > 0;
+  }
+
   // Premium Group Features (Phase 3)
   async getGroupMessages(groupId: number): Promise<(GroupMessage & { user: { username: string, avatar: string | null } })[]> {
     const results = await db.select({
@@ -360,6 +394,25 @@ export class DatabaseStorage implements IStorage {
       replyToId: replyToId || null
     }).returning();
     return message;
+  }
+
+  async editGroupMessage(id: number, userId: number, content: string): Promise<GroupMessage | undefined> {
+    const [msg] = await db.select().from(groupMessages).where(eq(groupMessages.id, id));
+    if (!msg || msg.userId !== userId) return undefined;
+    const [updated] = await db.update(groupMessages)
+      .set({ content, isEdited: 1 })
+      .where(eq(groupMessages.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteGroupMessage(id: number, userId: number): Promise<boolean> {
+    const [msg] = await db.select().from(groupMessages).where(eq(groupMessages.id, id));
+    if (!msg || msg.userId !== userId) return false;
+    await db.update(groupMessages)
+      .set({ isDeleted: 1, content: '' })
+      .where(eq(groupMessages.id, id));
+    return true;
   }
 
   async getQuizzes(groupId?: number, userId?: number): Promise<Quiz[]> {
@@ -409,6 +462,27 @@ export class DatabaseStorage implements IStorage {
     return quiz;
   }
 
+  async deleteQuiz(id: number, userId: number): Promise<boolean> {
+    // Check if user is creator or group admin
+    const [quiz] = await db.select().from(quizzes).where(eq(quizzes.id, id));
+    if (!quiz) return false;
+
+    if (quiz.userId === userId) {
+      await db.delete(quizzes).where(eq(quizzes.id, id));
+      return true;
+    }
+
+    if (quiz.groupId) {
+      const [member] = await db.select().from(groupMembers).where(and(eq(groupMembers.userId, userId), eq(groupMembers.groupId, quiz.groupId)));
+      if (member && member.role === 'admin') {
+        await db.delete(quizzes).where(eq(quizzes.id, id));
+        return true;
+      }
+    }
+
+    return false;
+  }
+
   async submitQuizResult(userId: number, data: any): Promise<QuizResult> {
     const [result] = await db.insert(quizResults).values({ ...data, userId }).returning();
     return result;
@@ -427,6 +501,69 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(users.streakCount));
 
     return members;
+  }
+
+  async getUserActivities(userId: number): Promise<UserActivity[]> {
+    return await db.select().from(userActivities).where(eq(userActivities.userId, userId)).orderBy(desc(userActivities.id));
+  }
+
+  async createUserActivity(userId: number, data: { type: string; points: number; description?: string }): Promise<UserActivity> {
+    const [activity] = await db.insert(userActivities).values({
+      userId,
+      type: data.type,
+      points: data.points,
+      description: data.description || null
+    }).returning();
+
+    // Also update user's total productivity score
+    const user = await this.getUserById(userId);
+    if (user) {
+      await this.updateUser(userId, {
+        productivityScore: user.productivityScore + data.points
+      });
+      await this.updateUserStreak(userId);
+    }
+
+    return activity;
+  }
+
+  async updateGroupMemberScore(userId: number, groupId: number, points: number): Promise<void> {
+    const [member] = await db.select().from(groupMembers).where(and(eq(groupMembers.userId, userId), eq(groupMembers.groupId, groupId)));
+    if (member) {
+      await db.update(groupMembers)
+        .set({ contributionScore: member.contributionScore + points })
+        .where(and(eq(groupMembers.userId, userId), eq(groupMembers.groupId, groupId)));
+    }
+  }
+
+  async updateUserStreak(userId: number): Promise<void> {
+    const user = await this.getUserById(userId);
+    if (!user) return;
+
+    const today = new Date().toISOString().split("T")[0];
+    const lastActive = user.lastActiveDate;
+
+    if (lastActive === today) return;
+
+    let newStreak = user.streakCount;
+    if (lastActive) {
+      const lastDate = new Date(lastActive);
+      const currentDate = new Date(today);
+      const diffDays = Math.floor((currentDate.getTime() - lastDate.getTime()) / (1000 * 3600 * 24));
+
+      if (diffDays === 1) {
+        newStreak += 1;
+      } else if (diffDays > 1) {
+        newStreak = 1;
+      }
+    } else {
+      newStreak = 1;
+    }
+
+    await this.updateUser(userId, {
+      lastActiveDate: today,
+      streakCount: newStreak
+    });
   }
 }
 

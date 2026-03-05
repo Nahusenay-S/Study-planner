@@ -4,7 +4,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
-export function GroupLeaderboard({ groupId }: { groupId: number }) {
+export function GroupLeaderboard({ groupId, hideHeader = false }: { groupId: number, hideHeader?: boolean }) {
     const { data: members = [], isLoading } = useQuery<{ username: string, streakCount: number, productivityScore: number, totalStudyMinutes: number, avatar: string | null }[]>({
         queryKey: [`/api/groups/${groupId}/leaderboard`],
     });
@@ -19,24 +19,26 @@ export function GroupLeaderboard({ groupId }: { groupId: number }) {
 
     return (
         <div className="space-y-8 animate-in fade-in duration-500 max-w-4xl mx-auto">
-            <div className="flex flex-col md:flex-row items-center justify-between gap-6 pb-4 border-b border-border/40">
-                <div className="space-y-1">
-                    <h2 className="text-2xl font-black flex items-center gap-2">
-                        <Trophy className="h-7 w-7 text-amber-500 drop-shadow-sm" /> Study Streaks
-                    </h2>
-                    <p className="text-sm text-muted-foreground font-medium">Top performers this week based on consistency.</p>
-                </div>
-                <div className="flex gap-4 p-4 rounded-3xl bg-muted/20 border border-border/40 shadow-sm">
-                    <div className="text-center px-4 border-r border-border/40">
-                        <p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">Global Group Rank</p>
-                        <p className="text-2xl font-black text-primary">#14</p>
+            {!hideHeader && (
+                <div className="flex flex-col md:flex-row items-center justify-between gap-6 pb-4 border-b border-border/40">
+                    <div className="space-y-1">
+                        <h2 className="text-2xl font-black flex items-center gap-2">
+                            <Trophy className="h-7 w-7 text-amber-500 drop-shadow-sm" /> Study Streaks
+                        </h2>
+                        <p className="text-sm text-muted-foreground font-medium">Top performers this week based on consistency.</p>
                     </div>
-                    <div className="text-center px-4">
-                        <p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">Active Members</p>
-                        <p className="text-2xl font-black text-primary">{members.length}</p>
+                    <div className="flex gap-4 p-4 rounded-3xl bg-muted/20 border border-border/40 shadow-sm">
+                        <div className="text-center px-4 border-r border-border/40">
+                            <p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">Global Group Rank</p>
+                            <p className="text-2xl font-black text-primary">#14</p>
+                        </div>
+                        <div className="text-center px-4">
+                            <p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">Active Members</p>
+                            <p className="text-2xl font-black text-primary">{members.length}</p>
+                        </div>
                     </div>
                 </div>
-            </div>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 {/* Top 3 Podiums */}

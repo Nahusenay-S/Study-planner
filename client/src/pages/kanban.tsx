@@ -32,10 +32,10 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { Subject, Task, StudyGroup } from "@shared/schema";
 
 const KANBAN_COLUMNS = [
-  { id: "todo" as const, title: "DATA-QUEUE" },
-  { id: "in-progress" as const, title: "ACTIVE-OP" },
-  { id: "review" as const, title: "INTEL-VAL" },
-  { id: "completed" as const, title: "MISSION-SUCCESS" },
+  { id: "todo" as const, title: "To Study" },
+  { id: "in-progress" as const, title: "Learning" },
+  { id: "review" as const, title: "Revision" },
+  { id: "completed" as const, title: "Mastered" },
 ];
 
 export default function KanbanPage() {
@@ -137,135 +137,165 @@ export default function KanbanPage() {
     : tasks.filter((t) => t.groupId === parseInt(filterGroup));
 
   return (
-    <div className="max-w-[1600px] mx-auto px-4 sm:px-6 py-16 space-y-16 animate-in fade-in slide-in-from-bottom-10 duration-1000 pb-40">
-      {/* Tactical Grid Header */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-12 py-12 px-10 bg-card/40 backdrop-blur-3xl rounded-[3rem] border-2 border-border/20 shadow-elevation-2xl relative overflow-hidden group">
-        <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-transparent opacity-50 pointer-events-none" />
-        <div className="space-y-4 relative z-10">
-          <div className="flex items-center gap-6">
-            <h1 className="text-5xl md:text-7xl font-black tracking-tighter text-foreground leading-none uppercase" data-testid="text-kanban-title">COMMAND-GRID</h1>
-            <Badge variant="outline" className="border-primary/40 bg-primary/10 text-primary text-[11px] uppercase font-black px-5 py-2 rounded-full hidden sm:inline-flex tracking-[0.3em] shadow-lg shadow-primary/10">MISSION-PHASE</Badge>
-          </div>
-          <p className="text-muted-foreground font-black text-xl tracking-tight italic opacity-60 max-w-2xl leading-snug">
-            Strategic deployment of study units across the temporal engagement grid. Synchronize and execute.
-          </p>
-        </div>
+    <div className="min-h-screen bg-transparent animate-fade-in pb-40 relative">
+      {/* Background Decorative Elements */}
+      <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-primary/5 rounded-full blur-[120px] -z-10 pointer-events-none" />
+      <div className="absolute bottom-40 left-0 w-[400px] h-[400px] bg-purple-500/5 rounded-full blur-[100px] -z-10 pointer-events-none" />
 
-        <div className="flex items-center gap-6 relative z-10">
-          <div className="flex items-center gap-4 p-4 rounded-[1.75rem] bg-muted/20 border-2 border-border/20 shadow-inner focus-within:border-primary/40 transition-all">
-            <Filter className="h-5 w-5 text-primary opacity-40 ml-2" />
-            <Select value={filterGroup} onValueChange={setFilterGroup}>
-              <SelectTrigger className="w-48 bg-transparent border-none font-black text-xs uppercase tracking-[0.2em] focus:ring-0">
-                <SelectValue placeholder="FILTER SQUAD" />
-              </SelectTrigger>
-              <SelectContent className="rounded-[2rem] border-2 border-border/20 bg-card/95 backdrop-blur-3xl p-2">
-                <SelectItem value="all" className="rounded-xl font-black text-[10px] uppercase tracking-widest">GLOBAL QUEUE</SelectItem>
-                {groups.map((g) => (
-                  <SelectItem key={g.id} value={g.id.toString()} className="rounded-xl font-black text-[10px] uppercase tracking-widest">{g.name.toUpperCase()} UNIT</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <Button
-            onClick={() => aiReorderMutation.mutate()}
-            disabled={aiReorderMutation.isPending}
-            className="h-16 px-10 rounded-[1.75rem] font-black uppercase text-sm tracking-widest shadow-elevation-2xl shadow-primary/30 bg-gradient-to-br from-primary via-primary to-purple-600 text-white hover:scale-[1.05] transition-all group/ai"
-          >
-            {aiReorderMutation.isPending ? <Loader2 className="h-6 w-6 animate-spin mr-3" /> : <Brain className="h-6 w-6 mr-3 group-hover/ai:scale-125 transition-transform" />}
-            NEURAL-SYNC
-          </Button>
-        </div>
-      </div>
-
-      <DragDropContext onDragEnd={onDragEnd}>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12">
-          {KANBAN_COLUMNS.map((col) => (
-            <div key={col.id} className="flex flex-col gap-8">
-              <div className="flex items-center justify-between px-6">
-                <div className="flex items-center gap-4">
-                  <div className={`h-4 w-4 rounded-full shadow-lg ${col.id === 'todo' ? 'bg-muted-foreground' :
-                    col.id === 'in-progress' ? 'bg-blue-500' :
-                      col.id === 'review' ? 'bg-amber-500' : 'bg-green-500'
-                    }`} />
-                  <h3 className="text-3xl font-black tracking-tighter uppercase leading-none opacity-80">{col.title}</h3>
+      <div className="max-w-[1600px] mx-auto px-4 sm:px-6 py-12 space-y-12">
+        {/* Modern Header Section */}
+        <div className="relative group">
+          <div className="absolute -inset-1 bg-gradient-to-r from-primary/20 to-purple-500/20 rounded-[2.5rem] blur opacity-25 group-hover:opacity-50 transition duration-1000 group-hover:duration-200" />
+          <div className="relative flex flex-col lg:flex-row lg:items-center justify-between gap-8 py-10 px-10 bg-card/60 backdrop-blur-2xl rounded-[2.5rem] border border-border/50 shadow-xl overflow-hidden">
+            <div className="space-y-3 relative z-10">
+              <div className="flex items-center gap-4">
+                <div className="h-12 w-12 rounded-2xl bg-primary/10 flex items-center justify-center">
+                  <LayoutGrid className="h-6 w-6 text-primary" />
                 </div>
-                <Badge variant="outline" className="h-8 min-w-[3rem] px-3 font-black text-[10px] opacity-40 rounded-xl border-border/40 justify-center">
-                  {filteredTasks.filter((t) => t.status === col.id).length}
-                </Badge>
+                <div>
+                  <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-foreground flex items-center gap-3">
+                    Study Board
+                    <Badge variant="secondary" className="bg-primary/10 text-primary border-none text-[10px] font-bold uppercase tracking-widest px-3">Active</Badge>
+                  </h1>
+                  <p className="text-muted-foreground text-sm font-medium opacity-80 mt-1 max-w-xl">
+                    Visualize your study path and manage your learning goals with precision.
+                  </p>
+                </div>
               </div>
-
-              <Droppable droppableId={col.id}>
-                {(provided, snapshot) => (
-                  <div
-                    {...provided.droppableProps}
-                    ref={provided.innerRef}
-                    className={`flex-1 min-h-[600px] rounded-[3rem] border-4 border-dashed transition-all duration-500 p-6 ${snapshot.isDraggingOver ? "bg-primary/5 border-primary/40 shadow-elevation-lg" : "bg-muted/5 border-border/20"
-                      }`}
-                  >
-                    <div className="space-y-6">
-                      {filteredTasks
-                        .filter((t) => t.status === col.id)
-                        .sort((a, b) => (a.kanbanOrder || 0) - (b.kanbanOrder || 0))
-                        .map((task, index) => (
-                          <Draggable key={task.id} draggableId={task.id.toString()} index={index}>
-                            {(provided, snapshot) => (
-                              <div
-                                ref={provided.innerRef}
-                                {...provided.draggableProps}
-                                {...provided.dragHandleProps}
-                                style={provided.draggableProps.style}
-                                className={`transform transition-all active:scale-95 ${snapshot.isDragging ? "z-50" : ""}`}
-                              >
-                                <Card className={`group/task border-none rounded-[2rem] bg-card/60 backdrop-blur-xl shadow-elevation-md hover:shadow-elevation-xl transition-all duration-300 overflow-hidden relative ${snapshot.isDragging ? "shadow-elevation-3xl border-2 border-primary/40 rotate-2 scale-105" : ""
-                                  }`}>
-                                  <div className={`h-2 w-full absolute top-0 left-0 ${task.priority === 'high' ? 'bg-red-500' :
-                                    task.priority === 'medium' ? 'bg-amber-500' : 'bg-blue-500'
-                                    } opacity-60 group-hover/task:opacity-100 transition-opacity`} />
-                                  <CardHeader className="p-8 pb-4">
-                                    <div className="flex items-start justify-between gap-4">
-                                      <div className="space-y-3 flex-1">
-                                        <CardTitle className="text-xl font-black tracking-tight leading-snug group-hover/task:text-primary transition-colors cursor-grab">
-                                          {task.title.toUpperCase()}
-                                        </CardTitle>
-                                        <Badge variant="outline" className={`text-[9px] uppercase font-black px-4 py-1 rounded-full ${task.priority === 'high' ? 'border-red-500/40 text-red-500 bg-red-500/5' :
-                                          task.priority === 'medium' ? 'border-amber-500/40 text-amber-500 bg-amber-500/5' : 'border-blue-500/40 text-blue-500 bg-blue-500/5'
-                                          }`}>
-                                          {task.priority.toUpperCase()} PRIORITY
-                                        </Badge>
-                                      </div>
-                                      <GripVertical className="h-6 w-6 text-muted-foreground opacity-20 group-hover/task:opacity-60 transition-opacity" />
-                                    </div>
-                                  </CardHeader>
-                                  <CardContent className="p-8 pt-4 space-y-4">
-                                    <div className="flex flex-wrap gap-4">
-                                      {task.subjectId && subjectMap.has(task.subjectId) && (
-                                        <div className="flex items-center gap-3 px-4 py-2 rounded-xl bg-muted/30 border-2 border-border/10">
-                                          <div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: subjectMap.get(task.subjectId!)?.color }} />
-                                          <span className="text-[10px] font-black uppercase tracking-widest opacity-60">{subjectMap.get(task.subjectId!)?.name}</span>
-                                        </div>
-                                      )}
-                                      {task.deadline && (
-                                        <div className="flex items-center gap-3 px-4 py-2 rounded-xl bg-muted/30 border-2 border-border/10">
-                                          <Calendar className="h-3.5 w-3.5 opacity-40" />
-                                          <span className="text-[10px] font-black uppercase tracking-widest opacity-60 italic">{new Date(task.deadline).toLocaleDateString()}</span>
-                                        </div>
-                                      )}
-                                    </div>
-                                  </CardContent>
-                                </Card>
-                              </div>
-                            )}
-                          </Draggable>
-                        ))}
-                    </div>
-                    {provided.placeholder}
-                  </div>
-                )}
-              </Droppable>
             </div>
-          ))}
+
+            <div className="flex flex-wrap items-center gap-4 relative z-10">
+              <div className="flex items-center gap-3 p-1.5 pl-4 rounded-2xl bg-muted/40 border border-border/40 focus-within:ring-2 ring-primary/20 transition-all">
+                <Filter className="h-4 w-4 text-muted-foreground" />
+                <Select value={filterGroup} onValueChange={setFilterGroup}>
+                  <SelectTrigger className="w-40 bg-transparent border-none font-bold text-xs uppercase tracking-wider focus:ring-0">
+                    <SelectValue placeholder="All Sources" />
+                  </SelectTrigger>
+                  <SelectContent className="rounded-2xl border-border/50 bg-card/95 backdrop-blur-xl">
+                    <SelectItem value="all" className="rounded-xl font-bold text-xs">All Subjects</SelectItem>
+                    {groups.map((g) => (
+                      <SelectItem key={g.id} value={g.id.toString()} className="rounded-xl font-bold text-xs">{g.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button
+                onClick={() => aiReorderMutation.mutate()}
+                disabled={aiReorderMutation.isPending}
+                className="h-12 px-8 rounded-2xl font-black uppercase text-xs tracking-widest bg-primary text-primary-foreground shadow-lg shadow-primary/25 hover:scale-105 active:scale-95 transition-all group/ai"
+              >
+                {aiReorderMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Sparkles className="h-4 w-4 mr-2 group-hover/ai:rotate-12 transition-transform" />}
+                Smart Optimize
+              </Button>
+            </div>
+          </div>
         </div>
-      </DragDropContext>
+
+        <DragDropContext onDragEnd={onDragEnd}>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+            {KANBAN_COLUMNS.map((col) => (
+              <div key={col.id} className="flex flex-col gap-6 group/col">
+                <div className="flex items-center justify-between px-4">
+                  <div className="flex items-center gap-3">
+                    <div className={`h-2.5 w-2.5 rounded-full shadow-lg animate-pulse ${col.id === 'todo' ? 'bg-slate-400' :
+                      col.id === 'in-progress' ? 'bg-blue-500' :
+                        col.id === 'review' ? 'bg-amber-500' : 'bg-green-500'
+                      }`} />
+                    <h3 className="text-sm font-black tracking-[0.15em] uppercase opacity-60 group-hover/col:opacity-100 transition-opacity">
+                      {col.title.replace(/-/g, ' ')}
+                    </h3>
+                  </div>
+                  <Badge variant="outline" className="h-6 min-w-[2rem] px-2 font-bold text-[10px] opacity-40 rounded-lg justify-center border-border/50">
+                    {filteredTasks.filter((t) => t.status === col.id).length}
+                  </Badge>
+                </div>
+
+                <Droppable droppableId={col.id}>
+                  {(provided, snapshot) => (
+                    <div
+                      {...provided.droppableProps}
+                      ref={provided.innerRef}
+                      className={`flex-1 min-h-[650px] rounded-[2rem] border-2 border-dashed transition-all duration-500 p-4 ${snapshot.isDraggingOver ? "bg-primary/5 border-primary/30 shadow-2xl" : "bg-card/20 border-border/20"
+                        }`}
+                    >
+                      <div className="space-y-4">
+                        {filteredTasks
+                          .filter((t) => t.status === col.id)
+                          .sort((a, b) => (a.kanbanOrder || 0) - (b.kanbanOrder || 0))
+                          .map((task, index) => (
+                            <Draggable key={task.id} draggableId={task.id.toString()} index={index}>
+                              {(provided, snapshot) => (
+                                <div
+                                  ref={provided.innerRef}
+                                  {...provided.draggableProps}
+                                  {...provided.dragHandleProps}
+                                  style={provided.draggableProps.style}
+                                  className={`transform transition-all active:scale-95 ${snapshot.isDragging ? "z-50" : ""}`}
+                                >
+                                  <Card className={`group/task border-none rounded-2xl bg-card border border-border/40 shadow-sm hover:shadow-xl hover:border-primary/20 transition-all duration-300 overflow-hidden relative ${snapshot.isDragging ? "shadow-2xl ring-4 ring-primary/20 rotate-1 scale-105" : "hover-elevate"
+                                    }`}>
+                                    <div className={`h-1.5 w-full absolute top-0 left-0 ${task.priority === 'high' ? 'bg-gradient-to-r from-red-500 to-rose-400' :
+                                      task.priority === 'medium' ? 'bg-gradient-to-r from-amber-500 to-orange-400' : 'bg-gradient-to-r from-blue-500 to-cyan-400'
+                                      } opacity-40 group-hover/task:opacity-100 transition-opacity`} />
+
+                                    <CardHeader className="p-5 pb-3">
+                                      <div className="flex items-start justify-between gap-3">
+                                        <div className="space-y-2 flex-1">
+                                          <CardTitle className="text-base font-bold tracking-tight leading-snug group-hover/task:text-primary transition-colors cursor-grab">
+                                            {task.title}
+                                          </CardTitle>
+                                          <div className="flex items-center gap-2">
+                                            <Badge variant="secondary" className={`text-[9px] uppercase font-black px-2 py-0.5 rounded-md ${task.priority === 'high' ? 'bg-red-500/10 text-red-500' :
+                                              task.priority === 'medium' ? 'bg-amber-500/10 text-amber-500' : 'bg-blue-500/10 text-blue-500'
+                                              }`}>
+                                              {task.priority}
+                                            </Badge>
+                                            {task.riskLevel === 'high' && (
+                                              <Badge variant="destructive" className="text-[9px] font-black animate-pulse px-2 py-0.5 rounded-md uppercase">High Risk</Badge>
+                                            )}
+                                          </div>
+                                        </div>
+                                        <GripVertical className="h-4 w-4 text-muted-foreground opacity-20 group-hover/task:opacity-60 transition-opacity" />
+                                      </div>
+                                    </CardHeader>
+
+                                    <CardContent className="p-5 pt-0 space-y-4">
+                                      <div className="flex flex-wrap gap-2">
+                                        {task.subjectId && subjectMap.has(task.subjectId) && (
+                                          <div className="flex items-center gap-2 px-2 py-1 rounded-lg bg-muted/30 border border-border/10">
+                                            <div className="h-2 w-2 rounded-full" style={{ backgroundColor: subjectMap.get(task.subjectId!)?.color }} />
+                                            <span className="text-[9px] font-bold text-muted-foreground uppercase">{subjectMap.get(task.subjectId!)?.name}</span>
+                                          </div>
+                                        )}
+                                        {task.deadline && (
+                                          <div className="flex items-center gap-2 px-2 py-1 rounded-lg bg-muted/30 border border-border/10">
+                                            <Calendar className="h-3 w-3 text-muted-foreground opacity-60" />
+                                            <span className="text-[9px] font-bold text-muted-foreground">{new Date(task.deadline).toLocaleDateString()}</span>
+                                          </div>
+                                        )}
+                                        {task.estimatedMinutes && (
+                                          <div className="flex items-center gap-2 px-2 py-1 rounded-lg bg-muted/30 border border-border/10">
+                                            <Clock className="h-3 w-3 text-muted-foreground opacity-60" />
+                                            <span className="text-[9px] font-bold text-muted-foreground">{task.estimatedMinutes}m</span>
+                                          </div>
+                                        )}
+                                      </div>
+                                    </CardContent>
+                                  </Card>
+                                </div>
+                              )}
+                            </Draggable>
+                          ))}
+                      </div>
+                      {provided.placeholder}
+                    </div>
+                  )}
+                </Droppable>
+              </div>
+            ))}
+          </div>
+        </DragDropContext>
+      </div>
     </div>
   );
 }

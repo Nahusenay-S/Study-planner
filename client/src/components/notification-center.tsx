@@ -8,7 +8,10 @@ import {
     AlertCircle,
     CheckCircle2,
     Trash2,
-    BellRing
+    BellRing,
+    Copy,
+    UserPlus,
+    Loader2,
 } from "lucide-react";
 import {
     Popover,
@@ -22,38 +25,80 @@ import { Separator } from "@/components/ui/separator";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { Notification } from "@shared/schema";
 import { formatDistanceToNow } from "date-fns";
+import { useToast } from "@/hooks/use-toast";
+import { useLocation } from "wouter";
 
 export function NotificationCenter() {
     const [isOpen, setIsOpen] = useState(false);
+    const [_, setLocation] = useLocation();
 
     const { data: notifications = [], isLoading } = useQuery<Notification[]>({
         queryKey: ["/api/notifications"],
         refetchInterval: 30000, // Refetch every 30 seconds
     });
 
-    const unreadCount = notifications.filter(n => !n.isRead).length;
+    const unreadCount = notifications.filter(n => Number(n.isRead) === 0).length;
+
+    const { toast } = useToast();
 
     const markReadMutation = useMutation({
         mutationFn: async (id: number) => {
-            await apiRequest("POST", `/api/notifications/${id}/read`);
+            await apiRequest("PATCH", `/api/notifications/${id}/read`);
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
-        }
+        },
     });
 
-    const markAllRead = async () => {
-        const unread = notifications.filter(n => !n.isRead);
-        for (const n of unread) {
-            await markReadMutation.mutateAsync(n.id);
-        }
-    };
+    const markAllReadMutation = useMutation({
+        mutationFn: async () => {
+            await apiRequest("POST", "/api/notifications/read-all");
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
+            toast({ title: "All caught up!", description: "All notifications marked as read." });
+        },
+    });
+
+    const joinGroupMutation = useMutation({
+        mutationFn: async (code: string) => {
+            const res = await apiRequest("POST", "/api/groups/join", { inviteCode: code });
+            return res.json();
+        },
+        onSuccess: (data) => {
+            queryClient.invalidateQueries({ queryKey: ["/api/groups"] });
+            toast({
+                title: "Successfully Joined!",
+                description: `You are now a member of ${data.name}.`,
+            });
+        },
+        onError: (err: Error) => {
+            toast({
+                title: "Join Failed",
+                description: err.message,
+                variant: "destructive",
+            });
+        },
+    });
+
+    const clearHistoryMutation = useMutation({
+        mutationFn: async () => {
+            await apiRequest("DELETE", "/api/notifications");
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
+            toast({ title: "History Cleared", description: "All notifications have been removed." });
+        },
+    });
 
     const getIcon = (type: string) => {
         switch (type) {
             case "success": return <CheckCircle2 className="h-4 w-4 text-green-500" />;
-            case "warning": return <AlertCircle className="h-4 w-4 text-amber-500" />;
-            case "error": return <AlertCircle className="h-4 w-4 text-red-500" />;
+            case "warning": return <AlertCircle className="h-4 w-4 text-yellow-500" />;
+            case "deadline":
+            case "urgent": return <AlertCircle className="h-4 w-4 text-red-500" />;
+            case "group": return <UserPlus className="h-4 w-4 text-blue-500" />;
+            case "resource": case "info":
             default: return <Info className="h-4 w-4 text-blue-500" />;
         }
     };
@@ -79,16 +124,30 @@ export function NotificationCenter() {
                         <BellRing className="h-4 w-4 text-primary" />
                         <h4 className="text-sm font-bold uppercase tracking-wider">Notifications</h4>
                     </div>
-                    {unreadCount > 0 && (
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 text-[10px] font-bold uppercase tracking-widest text-primary hover:bg-primary/10"
-                            onClick={markAllRead}
-                        >
-                            Mark all as read
-                        </Button>
-                    )}
+                    <div className="flex gap-2">
+                        {unreadCount > 0 && (
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 text-[10px] font-bold uppercase tracking-widest text-primary hover:bg-primary/10"
+                                onClick={() => markAllReadMutation.mutate()}
+                                disabled={markAllReadMutation.isPending}
+                            >
+                                {markAllReadMutation.isPending ? "Marking..." : "Mark all as read"}
+                            </Button>
+                        )}
+                        {notifications.length > 0 && (
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 w-8 px-0 text-muted-foreground hover:text-red-500 hover:bg-red-500/10"
+                                onClick={() => clearHistoryMutation.mutate()}
+                                title="Clear History"
+                            >
+                                <Trash2 className="h-4 w-4" />
+                            </Button>
+                        )}
+                    </div>
                 </div>
                 <Separator className="bg-border/40" />
                 <ScrollArea className="h-80">
@@ -114,44 +173,97 @@ export function NotificationCenter() {
                         </div>
                     ) : (
                         <div className="divide-y divide-border/20">
-                            {notifications.map((n) => (
-                                <div
-                                    key={n.id}
-                                    className={`flex gap-3 p-4 transition-colors cursor-default relative overflow-hidden group ${!n.isRead ? "bg-primary/5" : "hover:bg-muted/30"}`}
-                                    onClick={() => !n.isRead && markReadMutation.mutate(n.id)}
-                                >
-                                    <div className="mt-1 shrink-0">{getIcon(n.type)}</div>
-                                    <div className="space-y-1 min-w-0 pr-4">
-                                        <p className={`text-xs font-bold leading-tight ${!n.isRead ? 'text-primary' : ''}`}>
-                                            {n.title}
-                                        </p>
-                                        <p className="text-[11px] text-muted-foreground leading-snug">
-                                            {n.message}
-                                        </p>
-                                        <div className="flex items-center gap-1.5 pt-1">
-                                            <Clock className="h-3 w-3 text-muted-foreground/40" />
-                                            <span className="text-[10px] text-muted-foreground/50 font-bold uppercase tracking-wider">
-                                                {formatDistanceToNow(new Date(n.createdAt))} ago
-                                            </span>
+                            {notifications.map((n) => {
+                                // Simple regex to find invite codes (10 chars, typically nanoid)
+                                // In this app nanoid(10) is used.
+                                const codeMatch = n.message.match(/[A-Za-z0-9_-]{10,21}/);
+                                const inviteCode = codeMatch ? codeMatch[0] : null;
+
+                                return (
+                                    <div
+                                        key={n.id}
+                                        className={`flex gap-3 p-4 transition-colors cursor-pointer relative overflow-hidden group ${Number(n.isRead) === 0 ? "bg-primary/5" : "hover:bg-muted/30"}`}
+                                        onClick={() => {
+                                            if (Number(n.isRead) === 0) markReadMutation.mutate(n.id);
+                                            switch (n.type) {
+                                                case "group":
+                                                    setLocation("/groups");
+                                                    break;
+                                                case "deadline":
+                                                case "urgent":
+                                                case "task":
+                                                    setLocation("/kanban");
+                                                    break;
+                                                case "resource":
+                                                    setLocation("/resources");
+                                                    break;
+                                            }
+                                            setIsOpen(false);
+                                        }}
+                                    >
+                                        <div className="mt-1 shrink-0">{getIcon(n.type)}</div>
+                                        <div className="space-y-1 min-w-0 pr-4 flex-1">
+                                            <p className={`text-xs font-bold leading-tight ${!n.isRead ? 'text-primary' : ''}`}>
+                                                {n.title}
+                                            </p>
+                                            <p className="text-[11px] text-muted-foreground leading-snug">
+                                                {n.message}
+                                            </p>
+
+                                            {inviteCode && n.type === "group" && (
+                                                <div className="flex gap-2 mt-2">
+                                                    <Button
+                                                        size="sm"
+                                                        className="h-7 text-[10px] font-black gap-1.5 flex-1 bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            joinGroupMutation.mutate(inviteCode);
+                                                            if (!n.isRead) markReadMutation.mutate(n.id);
+                                                        }}
+                                                        disabled={joinGroupMutation.isPending}
+                                                    >
+                                                        {joinGroupMutation.isPending ? (
+                                                            <Loader2 className="h-3 w-3 animate-spin" />
+                                                        ) : (
+                                                            <UserPlus className="h-3 w-3" />
+                                                        )}
+                                                        JOIN GROUP
+                                                    </Button>
+                                                    <Button
+                                                        size="sm"
+                                                        variant="outline"
+                                                        className="h-7 w-7 p-0 rounded-md border-primary/20 text-primary hover:bg-primary/5"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            navigator.clipboard.writeText(inviteCode);
+                                                            toast({ title: "Code Copied" });
+                                                        }}
+                                                    >
+                                                        <Copy className="h-3 w-3" />
+                                                    </Button>
+                                                </div>
+                                            )}
+
+                                            <div className="flex items-center gap-1.5 pt-1">
+                                                <Clock className="h-3 w-3 text-muted-foreground/40" />
+                                                <span className="text-[10px] text-muted-foreground/50 font-bold uppercase tracking-wider">
+                                                    {formatDistanceToNow(new Date(n.createdAt))} ago
+                                                </span>
+                                            </div>
                                         </div>
+                                        {!n.isRead && (
+                                            <div className="absolute right-4 top-1/2 -translate-y-1/2">
+                                                <div className="h-1.5 w-1.5 rounded-full bg-primary shadow-[0_0_8px_primary]" />
+                                            </div>
+                                        )}
                                     </div>
-                                    {!n.isRead && (
-                                        <div className="absolute right-4 top-1/2 -translate-y-1/2">
-                                            <div className="h-1.5 w-1.5 rounded-full bg-primary shadow-[0_0_8px_primary]" />
-                                        </div>
-                                    )}
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     )}
                 </ScrollArea>
-                <Separator className="bg-border/40" />
-                <Button
-                    variant="ghost"
-                    className="w-full h-10 rounded-none text-xs font-bold uppercase tracking-widest opacity-60 hover:opacity-100"
-                >
-                    View all history
-                </Button>
+                {/* Using bottom section to show sorting info or empty space depending on design */}
+                <div className="h-2 bg-gradient-to-t from-background/50 to-transparent" />
             </PopoverContent>
         </Popover>
     );

@@ -53,6 +53,8 @@ export default function QuizBattlePage() {
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["/api/analytics/insights"] });
             queryClient.invalidateQueries({ queryKey: [`/api/quizzes?groupId=${quiz?.groupId}`] });
+            queryClient.invalidateQueries({ queryKey: [`/api/groups/${quiz?.groupId}/members`] });
+            queryClient.invalidateQueries({ queryKey: [`/api/groups/${quiz?.groupId}/leaderboard`] });
             toast({ title: "Battle Logged!", description: "Your score has been added to the group leaderboard." });
         }
     });

@@ -4,6 +4,7 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import fs from "fs";
+import { setupWebSocket } from "./ws";
 
 const app = express();
 const httpServer = createServer(app);
@@ -65,6 +66,9 @@ app.use((req, res, next) => {
   console.log("DATABASE_URL defined:", !!process.env.DATABASE_URL);
 
   await registerRoutes(httpServer, app);
+
+  // Initialize Real-Time WebSocket Server
+  const wss = setupWebSocket(httpServer);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
     const status = err.status || err.statusCode || 500;

@@ -24,7 +24,7 @@ import {
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import type { Subject, Task, PomodoroSession } from "@shared/schema";
+import type { Subject, Task, PomodoroSession, UserActivity } from "@shared/schema";
 
 function StatBadge({ icon: Icon, label, value, color }: {
   icon: React.ElementType;
@@ -48,7 +48,7 @@ function StatBadge({ icon: Icon, label, value, color }: {
   );
 }
 
-function HeatmapCalendar({ sessions }: { sessions: PomodoroSession[] }) {
+function HeatmapCalendar({ activities = [] }: { activities: UserActivity[] }) {
   const today = new Date();
   const weeks = 20;
   const days: { date: string; count: number; day: number }[] = [];
@@ -57,7 +57,7 @@ function HeatmapCalendar({ sessions }: { sessions: PomodoroSession[] }) {
     const d = new Date(today);
     d.setDate(d.getDate() - i);
     const dateStr = d.toISOString().split("T")[0];
-    const count = sessions.filter((s) => s.completedAt.startsWith(dateStr)).length;
+    const count = activities.filter((s) => s.createdAt.startsWith(dateStr)).length;
     days.push({ date: dateStr, count, day: d.getDay() });
   }
 
@@ -119,6 +119,9 @@ export default function ProfilePage() {
   const { data: tasks = [] } = useQuery<Task[]>({ queryKey: ["/api/tasks"] });
   const { data: sessions = [], isLoading } = useQuery<PomodoroSession[]>({
     queryKey: ["/api/pomodoro-sessions"],
+  });
+  const { data: activities = [] } = useQuery<UserActivity[]>({
+    queryKey: ["/api/users/me/activities"],
   });
 
   const updateMutation = useMutation({
@@ -340,7 +343,7 @@ export default function ProfilePage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <HeatmapCalendar sessions={sessions} />
+            <HeatmapCalendar activities={activities} />
           </CardContent>
         </Card>
 

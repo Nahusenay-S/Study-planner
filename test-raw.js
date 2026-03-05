@@ -6,7 +6,7 @@ const data = JSON.stringify({
 
 const options = {
     hostname: 'generativelanguage.googleapis.com',
-    path: '/v1beta/models/gemini-pro:generateContent?key=AIzaSyAsnm9FHa78bzB9hetzT3noPnHOWIBYT9E',
+    path: `/v1beta/models/gemini-pro:generateContent?key=${process.env.GEMINI_API_KEY}`,
     method: 'POST',
     headers: {
         'Content-Type': 'application/json',

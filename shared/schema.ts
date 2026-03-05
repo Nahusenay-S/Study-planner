@@ -39,6 +39,7 @@ export const studyGroups = pgTable("study_groups", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   name: text("name").notNull(),
   description: text("description"),
+  avatarUrl: text("avatar_url"),
   inviteCode: text("invite_code").notNull().unique(),
   createdBy: integer("created_by").notNull().references(() => users.id),
   createdAt: text("created_at").notNull().default(sql`now()`),
@@ -48,7 +49,9 @@ export const groupMembers = pgTable("group_members", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   groupId: integer("group_id").notNull().references(() => studyGroups.id, { onDelete: "cascade" }),
-  role: text("role").notNull().default("member"), // 'admin' or 'member'
+  role: text("role").notNull().default("member"), // 'admin', 'moderator', 'member', 'restricted'
+  contributionScore: integer("contribution_score").notNull().default(0),
+  lastSeenAt: text("last_seen_at"),
   joinedAt: text("joined_at").notNull().default(sql`now()`),
 });
 
@@ -183,6 +186,11 @@ export const groupMessages = pgTable("group_messages", {
   groupId: integer("group_id").notNull().references(() => studyGroups.id, { onDelete: "cascade" }),
   replyToId: integer("reply_to_id").references((): any => groupMessages.id, { onDelete: "set null" }),
   content: text("content").notNull(),
+  isEdited: integer("is_edited").notNull().default(0),
+  isDeleted: integer("is_deleted").notNull().default(0), // 0=active, 1=deleted_by_user, 2=deleted_by_admin
+  attachmentUrl: text("attachment_url"),
+  attachmentType: text("attachment_type"), // 'image', 'pdf', 'link', 'code'
+  attachmentName: text("attachment_name"),
   createdAt: text("created_at").notNull().default(sql`now()`),
 });
 
@@ -195,6 +203,7 @@ export const quizzes = pgTable("quizzes", {
   resourceId: integer("resource_id").references(() => resources.id, { onDelete: "set null" }),
   difficulty: text("difficulty").notNull().default("medium"),
   isBattle: integer("is_battle").notNull().default(0),
+  totalQuestions: integer("total_questions").notNull().default(0),
   createdAt: text("created_at").notNull().default(sql`now()`),
 });
 
@@ -221,6 +230,9 @@ export const insertGroupMessageSchema = z.object({
   groupId: z.number().int(),
   content: z.string().min(1),
   replyToId: z.number().int().nullish(),
+  attachmentUrl: z.string().optional(),
+  attachmentType: z.string().optional(),
+  attachmentName: z.string().optional(),
 });
 
 export const insertQuizSchema = z.object({
@@ -236,6 +248,15 @@ export const insertQuizResultSchema = z.object({
   quizId: z.number().int(),
   score: z.number().int(),
   totalQuestions: z.number().int(),
+});
+
+export const userActivities = pgTable("user_activities", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  type: text("type").notNull(), // 'pomodoro', 'message', 'quiz', 'resource_share'
+  points: integer("points").notNull().default(0),
+  description: text("description"),
+  createdAt: text("created_at").notNull().default(sql`now()`),
 });
 
 export type User = typeof users.$inferSelect;
@@ -258,3 +279,4 @@ export type InsertGroupMessage = z.infer<typeof insertGroupMessageSchema>;
 export type Quiz = typeof quizzes.$inferSelect;
 export type QuizQuestion = typeof quizQuestions.$inferSelect;
 export type QuizResult = typeof quizResults.$inferSelect;
+export type UserActivity = typeof userActivities.$inferSelect;

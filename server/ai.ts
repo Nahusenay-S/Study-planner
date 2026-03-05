@@ -4,7 +4,7 @@ import { log } from "./index";
 export async function generateStudySchedule(tasks: any[], subjects: any[]) {
     try {
         const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "placeholder-key");
-        const model = genAI.getGenerativeModel({ model: "models/gemini-2.5-flash" });
+        const model = genAI.getGenerativeModel({ model: "models/gemini-1.5-flash" });
 
         const prompt = `
             You are an expert academic advisor. I have the following tasks and subjects.
@@ -46,7 +46,7 @@ export async function generateStudySchedule(tasks: any[], subjects: any[]) {
 export async function summarizeResource(content: string, title: string) {
     try {
         const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "placeholder-key");
-        const model = genAI.getGenerativeModel({ model: "models/gemini-2.5-flash" });
+        const model = genAI.getGenerativeModel({ model: "models/gemini-1.5-flash" });
 
         const prompt = `
             Summarize the following study resource titled "${title}".
@@ -86,7 +86,7 @@ export async function chatWithAI(message: string, history: { role: string; conte
     try {
         const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "placeholder-key");
         const model = genAI.getGenerativeModel({
-            model: "models/gemini-2.5-flash",
+            model: "models/gemini-1.5-flash",
             systemInstruction: `You are 'StudyBuddy', a supportive AI tutor for the StudyFlow platform. 
             You help students with their studies, explain complex topics, and help them organize their tasks.
             Be concise, encouraging, and use markdown for clarity.
@@ -113,7 +113,7 @@ export async function chatWithAI(message: string, history: { role: string; conte
 export async function generateQuiz(content: string, title: string) {
     try {
         const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "placeholder-key");
-        const model = genAI.getGenerativeModel({ model: "models/gemini-2.5-flash" });
+        const model = genAI.getGenerativeModel({ model: "models/gemini-1.5-flash" });
 
         const prompt = `
             Based on the following study resource titled "${title}", generate a quiz.

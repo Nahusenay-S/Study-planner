@@ -49,8 +49,12 @@ function GroupCard({ group }: { group: StudyGroup }) {
                             {group.description || "No description provided."}
                         </CardDescription>
                     </div>
-                    <div className="h-10 w-10 shrink-0 flex items-center justify-center rounded-xl bg-primary/10 text-primary">
-                        <Users className="h-5 w-5" />
+                    <div className="h-10 w-10 shrink-0 flex items-center justify-center rounded-xl bg-primary/10 text-primary overflow-hidden">
+                        {(group as any).avatarUrl ? (
+                            <img src={(group as any).avatarUrl} alt={group.name} className="h-full w-full object-cover" />
+                        ) : (
+                            <Users className="h-5 w-5" />
+                        )}
                     </div>
                 </div>
             </CardHeader>

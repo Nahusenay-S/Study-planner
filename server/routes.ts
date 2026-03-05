@@ -11,6 +11,7 @@ import { z } from "zod";
 import { sql, eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { generateStudySchedule, summarizeResource, calculateReadinessScore, chatWithAI, generateQuiz } from "./ai";
+import { broadcastToGroup } from "./ws";
 import { differenceInDays, parseISO, startOfDay } from "date-fns";
 
 const uploadsDir = path.join(process.cwd(), "uploads", "avatars");
@@ -353,6 +354,25 @@ export async function registerRoutes(
 
     const taskData = { ...parsed.data, riskLevel };
     const task = await storage.createTask(req.session.userId!, taskData);
+
+    if (task.groupId) {
+      try {
+        const group = await storage.getStudyGroup(task.groupId);
+        const members = await storage.getGroupMembers(task.groupId);
+        for (const m of members) {
+          if (m.userId !== req.session.userId) {
+            await storage.createNotification(m.userId, {
+              title: "New Group Task",
+              message: `Task "${task.title}" added to ${group?.name}`,
+              type: "group"
+            });
+          }
+        }
+      } catch (e) {
+        console.error("Group task notification error:", e);
+      }
+    }
+
     res.status(201).json(task);
   });
 
@@ -461,6 +481,13 @@ export async function registerRoutes(
       }
 
       const resource = await storage.createResource(req.session.userId!, resourceData);
+
+      await storage.createUserActivity(req.session.userId!, {
+        type: "resource_share",
+        points: 5,
+        description: `Shared a resource: ${resource.title}`
+      });
+
       res.status(201).json(resource);
     });
   });
@@ -483,25 +510,12 @@ export async function registerRoutes(
     if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
     const session_ = await storage.createPomodoroSession(req.session.userId!, parsed.data);
 
-    const user = await storage.getUserById(req.session.userId!);
-    if (user) {
-      const today = new Date().toISOString().split("T")[0];
-      const lastActive = user.lastActiveDate;
-      let streak = user.streakCount;
-      if (lastActive) {
-        const last = new Date(lastActive);
-        const diff = Math.floor((new Date(today).getTime() - last.getTime()) / (1000 * 60 * 60 * 24));
-        if (diff === 1) streak++;
-        else if (diff > 1) streak = 1;
-      } else {
-        streak = 1;
-      }
-      await storage.updateUser(user.id, {
-        totalStudyMinutes: user.totalStudyMinutes + parsed.data.duration,
-        lastActiveDate: today,
-        streakCount: streak,
-      });
-    }
+    // Tracking this as an activity
+    await storage.createUserActivity(req.session.userId!, {
+      type: "pomodoro",
+      points: Math.floor(parsed.data.duration / 5), // 1 point per 5 mins
+      description: `Completed a ${parsed.data.duration} minute study session`
+    });
 
     res.status(201).json(session_);
   });
@@ -543,6 +557,30 @@ export async function registerRoutes(
     res.json(group);
   });
 
+  app.patch("/api/groups/:id", requireAuth, async (req, res) => {
+    const id = parseInt(String(req.params.id));
+
+    // Check that user is a member (and ideally admin/creator)
+    const isMember = await storage.isGroupMember(req.session.userId!, id);
+    if (!isMember) return res.status(403).json({ message: "Access denied" });
+
+    const group = await storage.getStudyGroup(id);
+    if (!group) return res.status(404).json({ message: "Group not found" });
+
+    // Only the creator can edit group settings
+    if (group.createdBy !== req.session.userId) {
+      return res.status(403).json({ message: "Only the group creator can update settings" });
+    }
+
+    const { name, description, avatarUrl } = req.body;
+    if (!name && !description && avatarUrl === undefined) {
+      return res.status(400).json({ message: "No fields to update" });
+    }
+
+    const updated = await storage.updateStudyGroup(id, { name, description, avatarUrl });
+    res.json(updated);
+  });
+
   app.post("/api/groups/:id/invite", requireAuth, async (req, res) => {
     const groupId = parseInt(String(req.params.id));
     const { identifier } = req.body; // username or email
@@ -565,10 +603,11 @@ export async function registerRoutes(
     const isMember = await storage.isGroupMember(targetUser.id, groupId);
     if (isMember) return res.status(400).json({ message: "User is already a member" });
 
+    const group = await storage.getStudyGroup(groupId);
     // Create a notification/invite
     await storage.createNotification(targetUser.id, {
       title: "Group Invitation",
-      message: `You've been invited to join group: ${(await storage.getStudyGroup(groupId))?.name}. Use code to join.`,
+      message: `Heads up! You've been invited to join "${group?.name}". Use the invite code: ${group?.inviteCode} to join the study circle.`,
       type: "group"
     });
 
@@ -620,15 +659,26 @@ export async function registerRoutes(
 
   // Notifications (Phase 2)
   app.get("/api/notifications", requireAuth, async (req, res) => {
-    const notifications = await storage.getNotifications(req.session.userId!);
-    res.json(notifications);
+    const notifs = await storage.getNotifications(req.session.userId!);
+    res.json(notifs);
   });
 
-  app.post("/api/notifications/:id/read", requireAuth, async (req, res) => {
+  app.patch("/api/notifications/:id/read", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id));
     const success = await storage.markNotificationRead(id, req.session.userId!);
     if (!success) return res.status(404).json({ message: "Notification not found" });
-    res.status(204).send();
+    res.json({ success: true });
+  });
+
+  // Mark ALL unread notifications as read (single bulk call)
+  app.post("/api/notifications/read-all", requireAuth, async (req, res) => {
+    await storage.markAllNotificationsRead(req.session.userId!);
+    res.json({ success: true });
+  });
+
+  app.delete("/api/notifications", requireAuth, async (req, res) => {
+    await storage.clearNotifications(req.session.userId!);
+    res.json({ success: true });
   });
 
   // AI Features (Phase 3)
@@ -796,6 +846,20 @@ export async function registerRoutes(
       score: req.body.score,
       totalQuestions: req.body.totalQuestions
     });
+
+    // Track as activity
+    await storage.createUserActivity(req.session.userId!, {
+      type: "quiz",
+      points: req.body.score * 10, // 10 points per correct answer
+      description: `Participated in a quiz battle and scored ${req.body.score}/${req.body.totalQuestions}`
+    });
+
+    // Update group contribution if it's a group quiz
+    const quiz = await storage.getQuiz(quizId);
+    if (quiz && quiz.groupId) {
+      await storage.updateGroupMemberScore(req.session.userId!, quiz.groupId, req.body.score * 5); // 5 contribution pts per correct answer
+    }
+
     res.json(result);
   });
 
@@ -809,6 +873,7 @@ export async function registerRoutes(
       const content = resource.description || `Study material for ${resource.title}`;
       const generated = await generateQuiz(content, title || resource.title);
 
+      const questionsToInsert = generated.slice(0, count || 5);
       const quizData = {
         title: title || resource.title,
         description: `Quiz based on ${resource.title}`,
@@ -816,14 +881,70 @@ export async function registerRoutes(
         groupId: groupId || null,
         resourceId: id,
         difficulty: difficulty || "medium",
-        isBattle: isBattle ? 1 : 0
+        isBattle: isBattle ? 1 : 0,
+        totalQuestions: questionsToInsert.length
       };
 
-      const quiz = await storage.createQuiz(quizData, generated.slice(0, count || 5));
+      const quiz = await storage.createQuiz(quizData, questionsToInsert);
+
+      if (groupId) {
+        const group = await storage.getStudyGroup(groupId);
+        const members = await storage.getGroupMembers(groupId);
+        for (const m of members) {
+          if (m.userId !== req.session.userId) {
+            await storage.createNotification(m.userId, {
+              title: "New Battle Started!",
+              message: `Challenge "${quiz.title}" is live in ${group?.name}`,
+              type: "group"
+            });
+          }
+        }
+      }
+
       res.status(201).json(quiz);
     } catch (error) {
       res.status(500).json({ message: "Failed to generate AI quiz" });
     }
+  });
+
+  app.post("/api/quizzes", requireAuth, async (req, res) => {
+    const { title, description, groupId, difficulty, isBattle, questions } = req.body;
+    if (!title || !questions || !Array.isArray(questions)) {
+      return res.status(400).json({ message: "Title and questions are required" });
+    }
+
+    const quiz = await storage.createQuiz({
+      title,
+      description: description || "",
+      userId: req.session.userId!,
+      groupId: groupId || null,
+      difficulty: difficulty || "medium",
+      isBattle: isBattle ? 1 : 0,
+      totalQuestions: questions.length
+    }, questions);
+
+    if (groupId) {
+      const group = await storage.getStudyGroup(groupId);
+      const members = await storage.getGroupMembers(groupId);
+      for (const m of members) {
+        if (m.userId !== req.session.userId) {
+          await storage.createNotification(m.userId, {
+            title: "New Manual Battle",
+            message: `Custom arena "${quiz.title}" forged in ${group?.name}`,
+            type: "group"
+          });
+        }
+      }
+    }
+
+    res.status(201).json(quiz);
+  });
+
+  app.delete("/api/quizzes/:id", requireAuth, async (req, res) => {
+    const id = parseInt(String(req.params.id));
+    const success = await storage.deleteQuiz(id, req.session.userId!);
+    if (!success) return res.status(403).json({ message: "Unauthorized or quiz not found" });
+    res.json({ message: "Quiz deleted" });
   });
 
   app.get("/api/groups/:id/leaderboard", requireAuth, async (req, res) => {
@@ -844,7 +965,84 @@ export async function registerRoutes(
     if (!content) return res.status(400).json({ message: "Content required" });
 
     const message = await storage.createGroupMessage(req.session.userId!, groupId, content, replyToId);
+
+    // Broadcast the new message to everyone in the room via WebSocket
+    const user = await storage.getUserById(req.session.userId!);
+    if (user) {
+      broadcastToGroup(groupId, "new_message", {
+        ...message,
+        user: { username: user.username, avatar: user.avatar }
+      });
+    }
+
+    // Create a notification for the person being replied to
+    if (replyToId && user) {
+      try {
+        const allMsgs = await storage.getGroupMessages(groupId);
+        const originalMsg = allMsgs.find(m => m.id === replyToId);
+        if (originalMsg && originalMsg.userId !== req.session.userId) {
+          const group = await storage.getStudyGroup(groupId);
+          await storage.createNotification(originalMsg.userId, {
+            title: `${user.username} replied to you`,
+            message: `"${content.slice(0, 80)}${content.length > 80 ? "..." : ""}" — in ${group?.name || "a group"}`,
+            type: "group"
+          });
+        }
+      } catch (e) {
+        // Don't block message send if notification fails
+        console.error("Reply notification error:", e);
+      }
+    }
+
     res.status(201).json(message);
+
+    // Track as activity
+    await storage.createUserActivity(req.session.userId!, {
+      type: "message",
+      points: 2, // 2 points per message
+      description: `Sent a message in a study group`
+    });
+  });
+
+  // Edit a group message
+  app.patch("/api/groups/:groupId/messages/:messageId", requireAuth, async (req, res) => {
+    const groupId = parseInt(String(req.params.groupId));
+    const messageId = parseInt(String(req.params.messageId));
+    const { content } = req.body;
+    if (!content) return res.status(400).json({ message: "Content required" });
+
+    const updated = await storage.editGroupMessage(messageId, req.session.userId!, content);
+    if (!updated) return res.status(403).json({ message: "Cannot edit this message" });
+
+    // Broadcast edit event to the group
+    const user = await storage.getUserById(req.session.userId!);
+    if (user) {
+      broadcastToGroup(groupId, "message_edited", {
+        ...updated,
+        user: { username: user.username, avatar: user.avatar }
+      });
+    }
+
+    res.json(updated);
+  });
+
+  // Delete a group message (soft delete)
+  app.delete("/api/groups/:groupId/messages/:messageId", requireAuth, async (req, res) => {
+    const groupId = parseInt(String(req.params.groupId));
+    const messageId = parseInt(String(req.params.messageId));
+
+    const success = await storage.deleteGroupMessage(messageId, req.session.userId!);
+    if (!success) return res.status(403).json({ message: "Cannot delete this message" });
+
+    // Broadcast delete event to the group
+    broadcastToGroup(groupId, "message_deleted", { id: messageId });
+
+    res.json({ success: true });
+  });
+
+  app.get("/api/users/me/activities", requireAuth, async (req, res) => {
+    const activities = await storage.getUserActivities(req.session.userId!);
+    res.json(activities);
   });
 
   return httpServer;

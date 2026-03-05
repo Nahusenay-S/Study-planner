@@ -403,7 +403,7 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="p-4 sm:p-6 space-y-5 sm:space-y-6 max-w-7xl mx-auto animate-fade-in text-slate-900 border-none">
+    <div className="p-4 sm:p-6 space-y-5 sm:space-y-6 max-w-7xl mx-auto animate-fade-in text-foreground border-none">
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-4">
         <div className="min-w-0">
           <h1 className="text-xl sm:text-2xl font-bold truncate tracking-tight" data-testid="text-dashboard-title">
@@ -442,20 +442,20 @@ export default function Dashboard() {
               <div className="space-y-2 flex-1 text-center md:text-left">
                 <h3 className="text-lg font-bold text-primary flex items-center justify-center md:justify-start gap-2">
                   AI Study Insight
-                  <Badge variant="outline" className="border-primary/30 text-primary text-[10px] font-bold">ALPHA</Badge>
+                  <Badge variant="outline" className="border-primary/30 text-primary text-[10px] font-bold">AI POWERED</Badge>
                 </h3>
-                <p className="text-sm leading-relaxed text-slate-800 font-medium italic">
+                <p className="text-sm leading-relaxed text-foreground font-medium italic">
                   "{insights.recommendation}"
                 </p>
                 <div className="flex flex-wrap gap-4 pt-2">
                   {insights.mostProductiveHour !== null && (
-                    <div className="flex items-center gap-1.5 text-xs text-slate-600">
+                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                       <Clock className="h-3.5 w-3.5 text-primary/70" />
-                      Peak Logic: <b>{insights.mostProductiveHour % 12 || 12}{insights.mostProductiveHour >= 12 ? 'PM' : 'AM'}</b>
+                      Focus Peak: <b>{insights.mostProductiveHour % 12 || 12}{insights.mostProductiveHour >= 12 ? 'PM' : 'AM'}</b>
                     </div>
                   )}
                   {insights.weakestSubject && (
-                    <div className="flex items-center gap-1.5 text-xs text-slate-600">
+                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                       <Target className="h-3.5 w-3.5 text-orange-500/70" />
                       Weak Zone: <b>{insights.weakestSubject}</b>
                     </div>

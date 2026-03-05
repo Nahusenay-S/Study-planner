@@ -2,7 +2,7 @@ import https from "https";
 
 const options = {
     hostname: 'generativelanguage.googleapis.com',
-    path: '/v1beta/models?key=AIzaSyAsnm9FHa78bzB9hetzT3noPnHOWIBYT9E',
+    path: `/v1beta/models?key=${process.env.GEMINI_API_KEY}`,
     method: 'GET'
 };
 

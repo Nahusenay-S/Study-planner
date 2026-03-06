@@ -1,63 +1,52 @@
-# 🌟 StudyFlow – AI-Powered Collaborative Study Platform
+# 🌟 StudyFlow – The Ultimate AI-Powered Study Platform
 
-**Plan smarter. Study better. Collaborate effortlessly.**
+**Plan smarter. Study better. Connect deeper.**
 
-StudyFlow is a modern, full-stack productivity suite designed for students and life-long learners. It combines high-performance task management, deep analytics, and real-time collaboration with a cutting-edge **Gemini AI layer** that optimizes your learning journey.
+StudyFlow is a premium, full-stack productivity ecosystem designed for high-performance students. It transcends traditional planners by combining **Deep Focus (Pomodoro)**, **Real-Time Collaboration**, and **Predictive AI Insights** into a single, high-fidelity experience.
 
 ---
 
-## 🏗️ Architecture Overview
+## 🏗️ Premium Architecture
 
-The platform is built on a robust, scalable architecture focusing on low latency and premium user experience.
+The platform leverages a cutting-edge stack optimized for low-latency interactions and state-of-the-art UI/UX.
 
 ```mermaid
 graph TD
-    A["Frontend: React + Tailwind + Vite"] --> B["Backend API: Node.js + Express"]
-    B --> C["ORM: Drizzle ORM"]
-    C --> D["Database: PostgreSQL / Neon"]
-    B --> E["Auth: Session + bcrypt"]
-    B --> F["Intelligence: Google Gemini AI"]
-    B --> G["Communication: Real-time Pub/Sub"]
+    A["Frontend: React + Tailwind + Framer Motion"] --> B["Backend: Node.js + Express"]
+    B --> C["Cognitive Layer: Google Gemini AI"]
+    B --> D["Persistence: PostgreSQL + Drizzle ORM"]
+    B --> E["Real-Time: WebSockets (Socket.io-style)"]
+    B --> F["Auth: Secure Session + bcrypt"]
+    B --> G["Storage: Local/Cloud Multi-part Uploads"]
 ```
 
 ---
 
-## 🚀 Core Features (Fully Implemented)
+## � Elite Features
 
-### 1️⃣ Personal Productivity (Phase 1)
-- **🔐 Advanced Authentication**: Secure registration and login using `express-session` with password hashing (`bcrypt`).
-- **👤 Interactive Dashboard**: Real-time productivity stats, study streaks, and activity heatmaps.
-- **📚 Subject Organizer**: Color-coded categorization with difficulty tracking and focus timers.
-- **✅ Sprint Board**: Drag-and-drop **Kanban Board** with priority-based task filtering.
-- **⏳ Pomodoro Focus**: Integrated timer that logs "Deep Work" minutes directly to your performance profile.
+### 1️⃣ Flow State (Pomodoro) Engine
+*   **Persistent Heartbeat**: Timers persist across page refreshes and browser sessions.
+*   **Real-time Cognitive Credit**: Study minutes log every 60 seconds into your "Cognitive Pulse" dashboard.
+*   **Automatic Cycles**: Seamlessly transitions between Focus (25m), Short Breaks (5m), and Long Breaks (15m) after 4 sessions.
+*   **Multi-Tethering**: Link focus sessions directly to specific subjects or Kanban tasks.
+*   **Auditory Immersion**: Distinctive start/end notifications and countdown "ticks" for deep focus.
 
-### 2️⃣ Collaboration Engine (Phase 2)
-- **👥 Study Groups**: Create private groups to sync tasks and progress with teammates.
-- **📂 Resource Library**: Shared cloud-ready repository for PDFs, links, and study notes.
-- **💬 Feedback System**: Contextual commenting on shared resources with unread notification badges.
-- **🔔 Notification Center**: Real-time alerts for deadlines, group invites, and member activity.
+### 2️⃣ Cognitive Pulse (Advanced Analytics)
+*   **AI Insight Card**: Personalized study recommendations powered by Gemini based on your weekly trends.
+*   **Deep-Focus Heatmaps**: Visualize your productivity peaks across days and subjects.
+*   **Subject Mastery Charts**: Comparative line charts and donut distributions for task completion.
+*   **Productivity Trajectory**: Track your "Readiness Score" to predict exam preparedness.
 
-### 3️⃣ AI Excellence (Phase 3)
-- **🤖 StudyBuddy AI Tutor**: A global, context-aware AI assistant that knows your tasks and subjects to provide 24/7 academic support.
-- **📅 Smart Reorder**: AI-driven task prioritization that automatically optimizes your Kanban board based on deadlines and workload.
-- **📝 Intelligent Summaries**: Instant extraction of key takeaways and automated flashcards from your study resources.
-- **🧠 Readiness Score**: A predictive analytics engine using Gemini to calculate your exam preparedness based on study habits.
+### 3️⃣ Collaborative Ecosystem
+*   **Study Groups**: Create private rooms with dedicated group-only resources and tasks.
+*   **Threaded Discussions**: Real-time chat with support for file attachments, emojis, and nested replies.
+*   **Group Kanban**: Synchronized task boards where team members can collaborate on complex projects.
+*   **Admin/Super Admin Hierarchy**: Secure role-based management for platform moderation and system-wide analytics.
 
----
-
-## 🛠 Tech Stack
-
-### Frontend & UI/UX
-- **Framework**: [React 18](https://reactjs.org/) + [Vite](https://vitejs.dev/)
-- **Styling**: [Tailwind CSS](https://tailwindcss.com/) + [Framer Motion](https://www.framer.com/motion/)
-- **Components**: [Shadcn UI](https://ui.shadcn.com/) + [Lucide Icons](https://lucide.dev/)
-- **State**: [TanStack Query v5](https://tanstack.com/query/latest)
-
-### Backend & AI
-- **Runtime**: [Node.js](https://nodejs.org/) + [Express](https://expressjs.com/)
-- **Intelligence**: [Google Gemini AI SDK](https://ai.google.dev/)
-- **Database**: [PostgreSQL](https://www.postgresql.org/) (via [Neon.tech](https://neon.tech/))
-- **ORM**: [Drizzle ORM](https://orm.drizzle.team/)
+### 4️⃣ AI Intelligence (The StudyBuddy)
+*   **Context-Aware Tutor**: 24/7 assistant that knows your schedule, tasks, and subjects.
+*   **Smart Breakdown**: Automatically decompose large tasks into actionable subtasks with a single click.
+*   **Intelligent Summarization**: Extract key takeaways and auto-generate flashcards/quizzes from uploaded PDFs.
 
 ---
 
@@ -65,14 +54,14 @@ graph TD
 
 ### Prerequisites
 - Node.js (v20+)
-- Google Gemini API Key ([Get it here](https://aistudio.google.com/))
-- PostgreSQL instance (Local or Neon)
+- Google Gemini API Key
+- PostgreSQL (Local or Neon.tech)
 
 ### Installation
 
 1. **Clone & Install**:
    ```bash
-   git clone https://github.com/your-username/Study-planner.git
+   git clone https://github.com/Nahusenay-S/Study-planner.git
    cd Study-planner
    npm install
    ```
@@ -83,13 +72,12 @@ graph TD
    DATABASE_URL=postgresql://user:pass@host/db
    SESSION_SECRET=your_secret_key
    GEMINI_API_KEY=your_gemini_key
+   ADMIN_SETUP_KEY=your_admin_secret
    ```
 
-3. **Database Migration**:
+3. **Database Setup**:
    ```bash
    npm run db:push
-   # Apply Phase 3 Schema
-   npx tsx migrate_phase3.js
    ```
 
 4. **Launch Application**:
@@ -97,19 +85,19 @@ graph TD
    npm run dev
    ```
 
----
-
-## 🎯 Implementation Roadmap
-
-1. [x] **Phase 1**: Core Engine (Auth, Tasks, Pomodoro, Dashboard).
-2. [x] **Phase 2**: Collaboration (Groups, Notifications, Resource Sharing).
-3. [x] **Phase 3**: AI Intelligence (AI Tutor, Smart Planner, Summarization).
+### 👑 Initial Admin Setup
+To elevate your first user to **Super Admin** status:
+Navigate to: `http://localhost:5000/api/auth/make-me-super-admin?key=YOUR_ADMIN_SETUP_KEY`
 
 ---
 
-## ⚖️ License
-Distributed under the MIT License. See `LICENSE` for more information.
+## 🛠 Tech Stack
+
+- **Frontend**: React 18, Vite, Tailwind CSS, Framer Motion, Recharts, Lucide.
+- **Backend**: Node.js, Express, Drizzle ORM, WebSockets, Multer.
+- **AI**: Google Gemini 1.5 Flash SDK.
+- **Deployment**: Configured for Vercel/Node.js production runtimes.
 
 ---
 
-*Built with ❤️ for the future of learning.*
+*Built with ❤️ for the next generation of lifelong learners.*

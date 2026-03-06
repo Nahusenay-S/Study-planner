@@ -78,11 +78,10 @@ app.use((req, res, next) => {
 // Define a helper to check if we are in a serverless environment
 const isVercel = !!process.env.VERCEL;
 
-(async () => {
-  // Always register routes
+// Define initialization promise
+const initApp = (async () => {
   await registerRoutes(httpServer, app);
 
-  // Initialize Real-Time WebSocket Server ONLY if not on Vercel
   if (!isVercel) {
     setupWebSocket(httpServer);
   }
@@ -98,12 +97,10 @@ const isVercel = !!process.env.VERCEL;
   if (process.env.NODE_ENV === "production") {
     serveStatic(app);
   } else if (!isVercel) {
-    // Vite setup should only happen in local dev
     const { setupVite } = await import("./vite");
     await setupVite(httpServer, app);
   }
 
-  // Only start listening if not on Vercel
   if (!isVercel && process.env.NODE_ENV !== 'test') {
     const port = parseInt(process.env.PORT || "5000", 10);
     httpServer.listen({ port, host: "0.0.0.0" }, () => {
@@ -112,4 +109,5 @@ const isVercel = !!process.env.VERCEL;
   }
 })();
 
+// Export the app for Vercel
 export default app;

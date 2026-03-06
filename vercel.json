@@ -1,0 +1,23 @@
+{
+    "version": 2,
+    "builds": [
+        {
+            "src": "server/index.ts",
+            "use": "@vercel/node"
+        }
+    ],
+    "routes": [
+        {
+            "src": "/uploads/(.*)",
+            "dest": "/client/public/uploads/$1"
+        },
+        {
+            "src": "/api/(.*)",
+            "dest": "server/index.ts"
+        },
+        {
+            "src": "/(.*)",
+            "dest": "server/index.ts"
+        }
+    ]
+}

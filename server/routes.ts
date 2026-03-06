@@ -6,18 +6,20 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import { storage, db } from "./storage";
-import { registerSchema, loginSchema, insertSubjectSchema, insertTaskSchema, insertPomodoroSessionSchema, insertResourceSchema, updateProfileSchema, insertStudyGroupSchema, insertCommentSchema, users, studyGroups, resources, tasks } from "@shared/schema";
+import { registerSchema, loginSchema, insertSubjectSchema, insertTaskSchema, insertPomodoroSessionSchema, insertResourceSchema, updateProfileSchema, insertStudyGroupSchema, insertCommentSchema, insertActiveTimerSchema, users, studyGroups, resources, tasks, pomodoroSessions } from "@shared/schema";
 import { z } from "zod";
 import { sql, eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
-import { generateStudySchedule, summarizeResource, calculateReadinessScore, chatWithAI, generateQuiz } from "./ai";
+import { generateStudySchedule, summarizeResource, calculateReadinessScore, chatWithAI, generateQuiz, breakDownTask, generateStudyInsights } from "./ai";
 import { broadcastToGroup } from "./ws";
 import { differenceInDays, parseISO, startOfDay } from "date-fns";
 
 const uploadsDir = path.join(process.cwd(), "uploads", "avatars");
 const resourcesDir = path.join(process.cwd(), "uploads", "resources");
+const chatUploadsDir = path.join(process.cwd(), "uploads", "chat");
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 if (!fs.existsSync(resourcesDir)) fs.mkdirSync(resourcesDir, { recursive: true });
+if (!fs.existsSync(chatUploadsDir)) fs.mkdirSync(chatUploadsDir, { recursive: true });
 
 const avatarStorage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, uploadsDir),
@@ -37,6 +39,24 @@ const avatarUpload = multer({
     } else {
       cb(new Error("Only JPEG, PNG, GIF, and WebP images are allowed"));
     }
+  },
+});
+
+const chatUploadStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, chatUploadsDir),
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname);
+    cb(null, `chat-${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`);
+  },
+});
+
+const chatUpload = multer({
+  storage: chatUploadStorage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  fileFilter: (_req, file, cb) => {
+    const allowed = ["image/jpeg", "image/png", "image/gif", "image/webp", "video/mp4", "application/pdf", "text/plain"];
+    if (allowed.includes(file.mimetype)) cb(null, true);
+    else cb(new Error("File type not allowed"));
   },
 });
 
@@ -64,6 +84,8 @@ const updateTaskSchema = z.object({
   completedAt: z.string().nullable().optional(),
   kanbanOrder: z.number().int().optional(),
   riskLevel: z.string().optional(),
+  isLocked: z.number().int().optional(),
+  subtasks: z.any().optional(),
 });
 
 function requireAuth(req: Request, res: Response, next: NextFunction) {
@@ -146,6 +168,10 @@ export async function registerRoutes(
     const valid = await bcrypt.compare(parsed.data.password, user.password);
     if (!valid) return res.status(401).json({ message: "Invalid email or password" });
 
+    if (user.role === 'banned') {
+      return res.status(403).json({ message: "Your account has been banned. Contact a Super Admin." });
+    }
+
     req.session.userId = user.id;
     const { password, ...safeUser } = user;
     res.json(safeUser);
@@ -157,9 +183,18 @@ export async function registerRoutes(
     });
   });
 
-  // Super Admin: Elevate current user to Super Admin
+  // Super Admin: Elevate current user to Super Admin (SECURED)
   app.get("/api/auth/make-me-super-admin", async (req, res) => {
     if (!req.session.userId) return res.status(401).json({ message: "Not authenticated" });
+
+    // Require a Secret Key from ENV for security
+    const setupKey = req.query.key;
+    const requiredKey = process.env.ADMIN_SETUP_KEY || "dev_secret_123";
+
+    if (setupKey !== requiredKey) {
+      return res.status(403).json({ message: "Invalid setup key. Elevation denied." });
+    }
+
     await db.update(users).set({ role: 'super_admin', isAdmin: 1 }).where(eq(users.id, req.session.userId));
     res.json({ message: "You are now a Super Admin! Reload the dashboard for root access." });
   });
@@ -170,23 +205,92 @@ export async function registerRoutes(
       id: users.id,
       username: users.username,
       email: users.email,
-      role: users.role,
-      isAdmin: users.isAdmin,
       displayName: users.displayName,
       avatar: users.avatar,
-    }).from(users);
+      role: users.role,
+      isAdmin: users.isAdmin,
+      createdAt: users.createdAt,
+      streakCount: users.streakCount,
+      productivityScore: users.productivityScore,
+    }).from(users).orderBy(sql`created_at DESC`);
     res.json(allUsers);
   });
 
   app.patch("/api/admin/users/:id/role", requireSuperAdmin, async (req, res) => {
     const id = parseInt(String(req.params.id));
     const { role } = req.body;
-    if (!['super_admin', 'admin', 'user'].includes(role)) {
+
+    // Safety: Prevent self-demotion from Super Admin to ensure platform always has one
+    if (id === req.session.userId && role !== 'super_admin') {
+      return res.status(400).json({ message: "Safety Lock: You cannot demote yourself from Super Admin role. Another Super Admin must do this." });
+    }
+
+    if (!['super_admin', 'admin', 'user', 'banned'].includes(role)) {
       return res.status(400).json({ message: "Invalid role" });
     }
-    const isAdmin = role === 'admin' || role === 'super_admin' ? 1 : 0;
+    const isAdmin = (role === 'admin' || role === 'super_admin') ? 1 : 0;
     const updated = await storage.updateUser(id, { role, isAdmin });
     res.json(updated);
+  });
+
+  // Ban user (Super Admin only)
+  app.patch("/api/admin/users/:id/ban", requireSuperAdmin, async (req, res) => {
+    const id = parseInt(String(req.params.id));
+    const target = await storage.getUserById(id);
+    if (!target) return res.status(404).json({ message: "User not found" });
+    if (target.role === 'super_admin') return res.status(403).json({ message: "Cannot ban a Super Admin" });
+    await storage.updateUser(id, { role: 'banned', isAdmin: 0 });
+    res.json({ message: `User ${target.username} banned.` });
+  });
+
+  // Unban user (Super Admin only)
+  app.patch("/api/admin/users/:id/unban", requireSuperAdmin, async (req, res) => {
+    const id = parseInt(String(req.params.id));
+    await storage.updateUser(id, { role: 'user', isAdmin: 0 });
+    res.json({ message: "User unbanned." });
+  });
+
+  // Force reset password (Super Admin only)
+  app.patch("/api/admin/users/:id/reset-password", requireSuperAdmin, async (req, res) => {
+    const id = parseInt(String(req.params.id));
+    const { newPassword } = req.body;
+    if (!newPassword || newPassword.length < 6) return res.status(400).json({ message: "Password must be at least 6 characters" });
+    const hashed = await bcrypt.hash(newPassword, 12);
+    await storage.updateUser(id, { password: hashed });
+    res.json({ message: "Password reset successfully." });
+  });
+
+  // Get all groups (Super Admin)
+  app.get("/api/admin/groups", requireSuperAdmin, async (req, res) => {
+    const allGroups = await db.select().from(studyGroups).orderBy(sql`created_at DESC`);
+    res.json(allGroups);
+  });
+
+  // Delete any group (Super Admin)
+  app.delete("/api/admin/groups/:id", requireSuperAdmin, async (req, res) => {
+    const id = parseInt(String(req.params.id));
+    await db.delete(studyGroups).where(eq(studyGroups.id, id));
+    res.json({ message: "Group deleted." });
+  });
+
+  // Get all resources (Super Admin)
+  app.get("/api/admin/resources", requireSuperAdmin, async (req, res) => {
+    const allResources = await db.select({
+      id: resources.id,
+      userId: resources.userId,
+      title: resources.title,
+      type: resources.type,
+      url: resources.url,
+      createdAt: resources.createdAt,
+    }).from(resources).orderBy(sql`created_at DESC`);
+    res.json(allResources);
+  });
+
+  // Delete any resource (Super Admin)
+  app.delete("/api/admin/resources/:id", requireSuperAdmin, async (req, res) => {
+    const id = parseInt(String(req.params.id));
+    await db.delete(resources).where(eq(resources.id, id));
+    res.json({ message: "Resource deleted." });
   });
 
   // System Admin Endpoints
@@ -335,8 +439,11 @@ export async function registerRoutes(
     }
 
     if (parsed.data.groupId) {
-      const member = await storage.isGroupMember(req.session.userId!, parsed.data.groupId);
-      if (!member) return res.status(403).json({ message: "You are not a member of this group" });
+      const group = await storage.getStudyGroup(parsed.data.groupId);
+      if (!group) return res.status(404).json({ message: "Group not found" });
+      if (group.createdBy !== req.session.userId) {
+        return res.status(403).json({ message: "Only the group creator (Admin) can create tasks for this study circle." });
+      }
     }
 
     // AI Risk Engine Logic
@@ -379,45 +486,54 @@ export async function registerRoutes(
   app.patch("/api/tasks/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id));
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+
+    // Get current task to check permissions
+    const existing = await storage.getTask(id, req.session.userId!) || (await db.select().from(tasks).where(eq(tasks.id, id)))[0];
+    if (!existing) return res.status(404).json({ message: "Task not found" });
+
+    // Permission check: owner OR group member (if it's a group task)
+    const isOwner = existing.userId === req.session.userId;
+    let isMember = false;
+    if (existing.groupId) {
+      isMember = await storage.isGroupMember(req.session.userId!, existing.groupId);
+    }
+
+    if (!isOwner && !isMember) {
+      return res.status(403).json({ message: "Unauthorized to update this task" });
+    }
+
+    if (existing.isLocked && !isOwner) {
+      return res.status(403).json({ message: "This task is locked by admin" });
+    }
+
     const parsed = updateTaskSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
-    if (parsed.data.subjectId) {
-      const owned = await storage.getSubject(parsed.data.subjectId, req.session.userId!);
-      if (!owned) return res.status(400).json({ message: "Subject not found" });
-    }
-
-    // AI Risk Engine Logic (on update)
-    let riskLevel = undefined;
-    if (parsed.data.deadline !== undefined || parsed.data.estimatedMinutes !== undefined) {
-      // We might need existing task data if one is missing in the update
-      const existing = await storage.getTask(id, req.session.userId!);
-      if (existing) {
-        const deadlineStr = parsed.data.deadline !== undefined ? parsed.data.deadline : existing.deadline;
-        const estMinutes = parsed.data.estimatedMinutes !== undefined ? parsed.data.estimatedMinutes : existing.estimatedMinutes;
-
-        if (deadlineStr && estMinutes) {
-          const deadline = startOfDay(parseISO(deadlineStr));
-          const today = startOfDay(new Date());
-          const daysLeft = Math.max(1, differenceInDays(deadline, today));
-          const avgStudyMinutesPerDay = 120;
-          riskLevel = estMinutes > daysLeft * avgStudyMinutesPerDay ? "high" : "normal";
-        }
-      }
-    }
 
     const updateData = { ...parsed.data };
-    if (riskLevel) updateData.riskLevel = riskLevel;
 
-    const task = await storage.updateTask(id, req.session.userId!, updateData);
-    if (!task) return res.status(404).json({ message: "Task not found" });
+    // Activity logging if status changed
+    if (updateData.status && updateData.status !== existing.status && existing.groupId) {
+      await storage.logKanbanActivity(existing.groupId, req.session.userId!, 'moved', id, `Moved from ${existing.status} to ${updateData.status}`);
+    }
+
+    const task = await storage.updateTask(id, existing.userId!, updateData);
     res.json(task);
   });
 
   app.delete("/api/tasks/:id", requireAuth, async (req, res) => {
     const id = parseInt(String(req.params.id));
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
-    const deleted = await storage.deleteTask(id, req.session.userId!);
-    if (!deleted) return res.status(404).json({ message: "Task not found" });
+    const task = (await db.select().from(tasks).where(eq(tasks.id, id)))[0];
+    if (!task) return res.status(404).json({ message: "Task not found" });
+
+    if (task.userId !== req.session.userId && task.groupId) {
+      const group = await storage.getStudyGroup(task.groupId);
+      if (group?.createdBy !== req.session.userId) {
+        return res.status(403).json({ message: "Only the creator or owner can delete tasks" });
+      }
+    }
+
+    await storage.deleteTask(id, task.userId!);
     res.status(204).send();
   });
 
@@ -505,6 +621,11 @@ export async function registerRoutes(
     res.status(204).send();
   });
 
+  app.get("/api/pomodoro-sessions", requireAuth, async (req, res) => {
+    const sessions = await storage.getPomodoroSessions(req.session.userId!);
+    res.json(sessions);
+  });
+
   app.post("/api/pomodoro-sessions", requireAuth, async (req, res) => {
     const parsed = insertPomodoroSessionSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
@@ -518,6 +639,24 @@ export async function registerRoutes(
     });
 
     res.status(201).json(session_);
+  });
+
+  app.get("/api/active-timer", requireAuth, async (req, res) => {
+    const timer = await storage.getActiveTimer(req.session.userId!);
+    if (!timer) return res.status(404).json({ message: "No active timer" });
+    res.json(timer);
+  });
+
+  app.post("/api/active-timer", requireAuth, async (req, res) => {
+    const parsed = insertActiveTimerSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+    const timer = await storage.setActiveTimer(req.session.userId!, parsed.data);
+    res.json(timer);
+  });
+
+  app.delete("/api/active-timer", requireAuth, async (req, res) => {
+    await storage.deleteActiveTimer(req.session.userId!);
+    res.status(204).send();
   });
 
   // Study Groups (Phase 2)
@@ -544,7 +683,46 @@ export async function registerRoutes(
     if (isMember) return res.status(400).json({ message: "Already a member of this group" });
 
     await storage.joinStudyGroup(req.session.userId!, group.id);
+
+    // System notification for join
+    const user = await storage.getUserById(req.session.userId!);
+    if (user) {
+      const message = await storage.createGroupMessage(req.session.userId!, group.id, `${user.displayName || user.username} joined the study circle`, undefined, "system");
+      broadcastToGroup(group.id, "new_message", {
+        ...message,
+        user: { username: "System", avatar: null }
+      });
+    }
+
     res.json(group);
+  });
+
+  app.post("/api/groups/:id/leave", requireAuth, async (req, res) => {
+    const id = parseInt(String(req.params.id));
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+
+    const group = await storage.getStudyGroup(id);
+    if (!group) return res.status(404).json({ message: "Group not found" });
+
+    if (group.createdBy === req.session.userId) {
+      return res.status(400).json({ message: "Creators cannot leave their own group. Delete the group instead." });
+    }
+
+    const isMember = await storage.isGroupMember(req.session.userId!, id);
+    if (!isMember) return res.status(400).json({ message: "You are not a member of this group" });
+
+    // System notification for leave BEFORE removing so we have the user name
+    const user = await storage.getUserById(req.session.userId!);
+    if (user) {
+      const message = await storage.createGroupMessage(req.session.userId!, id, `${user.displayName || user.username} left the study circle`, undefined, "system");
+      broadcastToGroup(id, "new_message", {
+        ...message,
+        user: { username: "System", avatar: null }
+      });
+    }
+
+    await storage.leaveStudyGroup(req.session.userId!, id);
+    res.status(204).send();
   });
 
   app.get("/api/groups/:id", requireAuth, async (req, res) => {
@@ -579,6 +757,21 @@ export async function registerRoutes(
 
     const updated = await storage.updateStudyGroup(id, { name, description, avatarUrl });
     res.json(updated);
+  });
+
+  app.delete("/api/groups/:id", requireAuth, async (req, res) => {
+    const id = parseInt(String(req.params.id));
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+
+    const group = await storage.getStudyGroup(id);
+    if (!group) return res.status(404).json({ message: "Group not found" });
+
+    if (group.createdBy !== req.session.userId) {
+      return res.status(403).json({ message: "Only the group creator can delete this group" });
+    }
+
+    await storage.deleteStudyGroup(id);
+    res.status(204).send();
   });
 
   app.post("/api/groups/:id/invite", requireAuth, async (req, res) => {
@@ -953,10 +1146,133 @@ export async function registerRoutes(
     res.json(leaderboard);
   });
 
+  app.get("/api/groups/:id/kanban", requireAuth, async (req, res) => {
+    const groupId = parseInt(req.params.id as string);
+    const isMember = await storage.isGroupMember(req.session.userId!, groupId);
+    if (!isMember) return res.status(403).json({ message: "Not a member of this group" });
+
+    const tasks = await storage.getGroupTasks(groupId);
+    const activity = await storage.getKanbanActivity(groupId);
+    res.json({ tasks, activity });
+  });
+
+  app.delete("/api/groups/:id/kanban/activity", requireAuth, async (req, res) => {
+    const groupId = parseInt(req.params.id as string);
+    const group = await storage.getStudyGroup(groupId);
+    if (group?.createdBy !== req.session.userId) {
+      return res.status(403).json({ message: "Only group admin can clear activity" });
+    }
+    await storage.clearKanbanActivity(groupId);
+    res.status(204).send();
+  });
+
+  app.post("/api/tasks/:id/comments", requireAuth, async (req, res) => {
+    const taskId = parseInt(req.params.id as string);
+    const { content, replyToId } = req.body;
+    if (!content) return res.status(400).json({ message: "Content required" });
+
+    const comment = await storage.createTaskComment(req.session.userId!, taskId, content, replyToId);
+
+    // Log activity if it's a group task
+    const task = (await db.select().from(tasks).where(eq(tasks.id, taskId)))[0];
+    if (task?.groupId) {
+      await storage.logKanbanActivity(task.groupId, req.session.userId!, 'commented', taskId);
+    }
+
+    res.status(201).json(comment);
+  });
+
+  app.get("/api/tasks/:id/comments", requireAuth, async (req, res) => {
+    const taskId = parseInt(req.params.id as string);
+    const comments = await storage.getTaskComments(taskId);
+    res.json(comments);
+  });
+
+  app.post("/api/tasks/:id/assign", requireAuth, async (req, res) => {
+    const taskId = parseInt(req.params.id as string);
+    const { userId } = req.body;
+    const assignment = await storage.assignUserToTask(taskId, userId);
+
+    // Log & notify
+    const task = (await db.select().from(tasks).where(eq(tasks.id, taskId)))[0];
+    if (task?.groupId) {
+      await storage.logKanbanActivity(task.groupId, req.session.userId!, 'assigned', taskId, `Assigned member ID ${userId}`);
+      const group = await storage.getStudyGroup(task.groupId);
+      await storage.createNotification(userId, {
+        title: "New Task Assignment",
+        message: `You were assigned to "${task.title}" in ${group?.name}`,
+        type: "group"
+      });
+    }
+
+    res.json(assignment);
+  });
+
+  app.delete("/api/tasks/:id/assign/:userId", requireAuth, async (req, res) => {
+    const taskId = parseInt(req.params.id as string);
+    const userId = parseInt(req.params.userId as string);
+    await storage.unassignUserFromTask(taskId, userId);
+    res.status(204).send();
+  });
+
+  app.patch("/api/tasks/:id/lock", requireAuth, async (req, res) => {
+    const taskId = parseInt(req.params.id as string);
+    const { isLocked } = req.body;
+    const task = (await db.select().from(tasks).where(eq(tasks.id, taskId)))[0];
+    if (!task) return res.status(404).json({ message: "Task not found" });
+
+    // Only creator/admin can lock
+    const group = await storage.getStudyGroup(task.groupId!);
+    if (group?.createdBy !== req.session.userId) {
+      return res.status(403).json({ message: "Only group creator can lock tasks" });
+    }
+
+    const updated = await storage.updateTask(taskId, task.userId!, { isLocked: isLocked ? 1 : 0 });
+    res.json(updated);
+  });
+
   app.get("/api/groups/:id/messages", requireAuth, async (req, res) => {
     const groupId = parseInt(String(req.params.id));
     const messages = await storage.getGroupMessages(groupId);
     res.json(messages);
+  });
+
+  // Chat file upload
+  app.post("/api/groups/:id/messages/upload", requireAuth, (req, res) => {
+    chatUpload.single("file")(req, res, async (err) => {
+      if (err) return res.status(400).json({ message: err.message || "Upload failed" });
+      if (!req.file) return res.status(400).json({ message: "No file provided" });
+
+      const groupId = parseInt(String(req.params.id));
+      const isMember = await storage.isGroupMember(req.session.userId!, groupId);
+      if (!isMember) return res.status(403).json({ message: "Not a group member" });
+
+      const fileUrl = `/uploads/chat/${req.file.filename}`;
+      const isImage = req.file.mimetype.startsWith("image/");
+      const isVideo = req.file.mimetype.startsWith("video/");
+      const label = isImage ? "📷 Image" : isVideo ? "🎥 Video" : "📎 File";
+      const msgContent = `${label}: ${req.file.originalname}\n${fileUrl}`;
+
+      const message = await storage.createGroupMessage(req.session.userId!, groupId, msgContent);
+      const user = await storage.getUserById(req.session.userId!);
+      if (user) {
+        broadcastToGroup(groupId, "new_message", {
+          ...message,
+          user: { username: user.username, avatar: user.avatar }
+        });
+      }
+      res.status(201).json({ message, fileUrl });
+    });
+  });
+
+  app.post("/api/tasks/:id/ai-breakdown", requireAuth, async (req, res) => {
+    const taskId = parseInt(req.params.id as string);
+    const task = (await db.select().from(tasks).where(eq(tasks.id, taskId)))[0];
+    if (!task) return res.status(404).json({ message: "Task not found" });
+
+    const subtasks = await breakDownTask(task.title, task.description || undefined);
+    const updated = await storage.updateTask(taskId, task.userId!, { subtasks });
+    res.json(updated);
   });
 
   app.post("/api/groups/:id/messages", requireAuth, async (req, res) => {
@@ -1043,6 +1359,15 @@ export async function registerRoutes(
   app.get("/api/users/me/activities", requireAuth, async (req, res) => {
     const activities = await storage.getUserActivities(req.session.userId!);
     res.json(activities);
+  });
+
+  app.post("/api/analytics/insights", requireAuth, async (req, res) => {
+    try {
+      const insight = await generateStudyInsights(req.body);
+      res.json({ insight });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to generate AI insights" });
+    }
   });
 
   return httpServer;

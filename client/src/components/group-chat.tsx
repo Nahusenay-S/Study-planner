@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Send, User, Sparkles, XCircle, Paperclip, Smile, MoreVertical, Edit2, Trash2, Check, X } from "lucide-react";
+import { Send, User, Sparkles, XCircle, Paperclip, Smile, MoreVertical, Edit2, Trash2, Check, X, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -11,6 +11,26 @@ import { useAuth } from "@/hooks/use-auth";
 import type { GroupMessage } from "@shared/schema";
 
 type WSMessage = GroupMessage & { user: { username: string, avatar: string | null } };
+
+const EMOJI_LIST = [
+    "😀", "😂", "😍", "🤔", "👍", "👎", "❤️", "🔥", "✅", "⭐",
+    "🎉", "💯", "📚", "🧠", "💡", "⚡", "🚀", "🎯", "📝", "🙌",
+    "😅", "😎", "😭", "🤯", "👀", "🙏", "💪", "✨", "🌟", "🤝",
+    "😊", "😋", "🤣", "🥳", "😤", "😢", "😴", "🤩", "😬", "🫡",
+];
+
+// Helper: detect if a message content is a file attachment
+function parseAttachment(content: string) {
+    const lines = content.split("\n");
+    if (lines.length >= 2) {
+        const label = lines[0];
+        const url = lines[lines.length - 1];
+        if (url.startsWith("/uploads/chat/")) {
+            return { label, url };
+        }
+    }
+    return null;
+}
 
 export function GroupChat({ groupId, groupName = "Group Discussion", groupAvatar }: {
     groupId: number;
@@ -23,8 +43,11 @@ export function GroupChat({ groupId, groupName = "Group Discussion", groupAvatar
     const [replyTo, setReplyTo] = useState<WSMessage | null>(null);
     const [editingMsg, setEditingMsg] = useState<WSMessage | null>(null);
     const [editContent, setEditContent] = useState("");
+    const [showEmoji, setShowEmoji] = useState(false);
     const scrollRef = useRef<HTMLDivElement>(null);
     const wsRef = useRef<WebSocket | null>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const inputRef = useRef<HTMLInputElement>(null);
 
     const [liveMessages, setLiveMessages] = useState<WSMessage[]>([]);
     const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
@@ -170,6 +193,30 @@ export function GroupChat({ groupId, groupName = "Group Discussion", groupAvatar
         }
     });
 
+    // UPLOAD file
+    const uploadMutation = useMutation({
+        mutationFn: async (file: File) => {
+            const formData = new FormData();
+            formData.append("file", file);
+            const res = await fetch(`/api/groups/${groupId}/messages/upload`, {
+                method: "POST",
+                body: formData,
+                credentials: "include",
+            });
+            if (!res.ok) {
+                const err = await res.json();
+                throw new Error(err.message || "Upload failed");
+            }
+            return res.json();
+        },
+        onSuccess: () => {
+            toast({ title: "File sent" });
+        },
+        onError: (err: Error) => {
+            toast({ title: "Upload failed", description: err.message, variant: "destructive" });
+        }
+    });
+
     // EDIT message
     const editMutation = useMutation({
         mutationFn: async ({ messageId, content }: { messageId: number, content: string }) => {
@@ -177,7 +224,6 @@ export function GroupChat({ groupId, groupName = "Group Discussion", groupAvatar
             return res.json();
         },
         onSuccess: (updated) => {
-            // Optimistically update local state in case WS is slow
             setLiveMessages(prev =>
                 prev.map(m => m.id === updated.id ? { ...m, content: updated.content, isEdited: 1 } : m)
             );
@@ -227,6 +273,31 @@ export function GroupChat({ groupId, groupName = "Group Discussion", groupAvatar
         setEditContent("");
     };
 
+    const insertEmoji = (emoji: string) => {
+        const el = inputRef.current;
+        if (el) {
+            const start = el.selectionStart ?? content.length;
+            const end = el.selectionEnd ?? content.length;
+            const newContent = content.slice(0, start) + emoji + content.slice(end);
+            setContent(newContent);
+            // Refocus and set cursor after inserted emoji
+            setTimeout(() => {
+                el.focus();
+                el.setSelectionRange(start + emoji.length, start + emoji.length);
+            }, 0);
+        } else {
+            setContent(prev => prev + emoji);
+        }
+        setShowEmoji(false);
+    };
+
+    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        uploadMutation.mutate(file);
+        e.target.value = ""; // reset so same file can be re-selected
+    };
+
     // Find the text of the replied-to message
     const getReplyPreview = (replyToId: number | null) => {
         if (!replyToId) return null;
@@ -237,6 +308,15 @@ export function GroupChat({ groupId, groupName = "Group Discussion", groupAvatar
 
     return (
         <div className="flex flex-col h-[650px] border border-border/50 rounded-3xl overflow-hidden bg-card/60 backdrop-blur-xl shadow-2xl relative">
+            {/* Hidden file input */}
+            <input
+                ref={fileInputRef}
+                type="file"
+                className="hidden"
+                accept="image/*,video/mp4,application/pdf,text/plain"
+                onChange={handleFileSelect}
+            />
+
             {/* Top Bar */}
             <div className="px-5 py-3 bg-card/80 backdrop-blur-md border-b border-border/40 flex items-center justify-between sticky top-0 z-10 shadow-sm">
                 <div className="flex items-center gap-3">
@@ -274,6 +354,21 @@ export function GroupChat({ groupId, groupName = "Group Discussion", groupAvatar
                         const isEdited = (msg as any).isEdited === 1;
                         const isDeleted = (msg as any).isDeleted === 1;
                         const isBeingEdited = editingMsg?.id === msg.id;
+                        const attachment = !isDeleted ? parseAttachment(msg.content) : null;
+
+                        // System notification style
+                        if (msg.attachmentType === 'system') {
+                            return (
+                                <div key={msg.id} className="flex justify-center my-6 animate-in fade-in slide-in-from-bottom-2 duration-700">
+                                    <div className="bg-muted/30 backdrop-blur-md border border-border/20 px-5 py-2 rounded-full shadow-sm flex items-center gap-2">
+                                        <Sparkles className="h-3.5 w-3.5 text-primary/40 animate-pulse" />
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/90">
+                                            {msg.content}
+                                        </p>
+                                    </div>
+                                </div>
+                            );
+                        }
 
                         // Deleted message
                         if (isDeleted) {
@@ -354,7 +449,33 @@ export function GroupChat({ groupId, groupName = "Group Discussion", groupAvatar
                                                         : "bg-muted/50 border border-border/40 rounded-[1.25rem] rounded-bl-[0.25rem]"
                                                     }
                                                 `}>
-                                                    <p className="whitespace-pre-wrap break-words">{msg.content}</p>
+                                                    {/* Attachment rendering */}
+                                                    {attachment ? (
+                                                        <div className="space-y-2">
+                                                            <p className="text-[11px] font-bold opacity-80">{attachment.label}</p>
+                                                            {attachment.label.includes("Image") ? (
+                                                                <img
+                                                                    src={attachment.url}
+                                                                    alt="attachment"
+                                                                    className="max-w-[240px] rounded-xl object-cover border border-white/10 shadow"
+                                                                />
+                                                            ) : attachment.label.includes("Video") ? (
+                                                                <video src={attachment.url} controls className="max-w-[240px] rounded-xl" />
+                                                            ) : (
+                                                                <a
+                                                                    href={attachment.url}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    className={`flex items-center gap-2 underline text-xs ${isMe ? "text-white/80" : "text-primary"}`}
+                                                                >
+                                                                    <Paperclip className="h-3.5 w-3.5" />
+                                                                    {attachment.label.replace(/^.*?: /, "")}
+                                                                </a>
+                                                            )}
+                                                        </div>
+                                                    ) : (
+                                                        <p className="whitespace-pre-wrap break-words">{msg.content}</p>
+                                                    )}
                                                     <div className={`flex items-center gap-1.5 mt-1 justify-end ${isMe ? "text-white/70" : "text-muted-foreground/60"}`}>
                                                         {isEdited && <span className="text-[9px] italic">edited</span>}
                                                         <span className="text-[9px] font-medium tracking-tight">
@@ -431,21 +552,61 @@ export function GroupChat({ groupId, groupName = "Group Discussion", groupAvatar
                     </div>
                 )}
                 <div className="flex items-end gap-2 relative">
-                    <Button variant="ghost" size="icon" className="h-[44px] w-[44px] rounded-full shrink-0 text-muted-foreground hover:text-foreground">
-                        <Paperclip className="h-5 w-5" />
+                    {/* Attach file button */}
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-[44px] w-[44px] rounded-full shrink-0 text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={uploadMutation.isPending}
+                        title="Attach file (image, video, PDF)"
+                    >
+                        {uploadMutation.isPending
+                            ? <Loader2 className="h-5 w-5 animate-spin" />
+                            : <Paperclip className="h-5 w-5" />
+                        }
                     </Button>
 
                     <div className="relative flex-1">
                         <Input
+                            ref={inputRef}
                             placeholder={replyTo ? `Reply to @${replyTo.user.username}...` : "Write a message..."}
                             className="rounded-3xl bg-muted/30 border-border/50 min-h-[44px] text-sm shadow-inner focus-visible:ring-primary/30 pl-4 pr-10"
                             value={content}
                             onChange={handleTyping}
                             onKeyDown={(e) => e.key === "Enter" && triggerSend()}
                         />
-                        <Button variant="ghost" size="icon" className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8 rounded-full text-muted-foreground hover:text-foreground">
-                            <Smile className="h-4 w-4" />
-                        </Button>
+                        {/* Emoji picker button */}
+                        <Popover open={showEmoji} onOpenChange={setShowEmoji}>
+                            <PopoverTrigger asChild>
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8 rounded-full text-muted-foreground hover:text-foreground"
+                                    title="Emoji picker"
+                                >
+                                    <Smile className="h-4 w-4" />
+                                </Button>
+                            </PopoverTrigger>
+                            <PopoverContent
+                                className="w-64 p-3 rounded-2xl bg-background border-border shadow-xl"
+                                side="top"
+                                align="end"
+                            >
+                                <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-2">Quick Emoji</p>
+                                <div className="grid grid-cols-10 gap-0.5">
+                                    {EMOJI_LIST.map((emoji) => (
+                                        <button
+                                            key={emoji}
+                                            onClick={() => insertEmoji(emoji)}
+                                            className="h-7 w-7 text-lg rounded-lg hover:bg-muted/60 transition-colors flex items-center justify-center"
+                                        >
+                                            {emoji}
+                                        </button>
+                                    ))}
+                                </div>
+                            </PopoverContent>
+                        </Popover>
                     </div>
 
                     <Button

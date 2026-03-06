@@ -165,3 +165,73 @@ export async function generateQuiz(content: string, title: string) {
         ];
     }
 }
+
+export async function breakDownTask(title: string, description?: string) {
+    try {
+        const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "placeholder-key");
+        const model = genAI.getGenerativeModel({ model: "models/gemini-1.5-flash" });
+
+        const prompt = `
+            Analyze the following task title and description, and break it down into 5-8 smaller, actionable subtasks.
+            
+            Title: "${title}"
+            Description: "${description || 'No description provided.'}"
+            
+            Return only a JSON array of objects. Each object should have: "id" (unique string), "title" (short name), and "completed" (boolean, always false).
+        `;
+
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        const text = response.text();
+
+        const jsonMatch = text.match(/\[[\s\S]*\]/);
+        if (jsonMatch) {
+            return JSON.parse(jsonMatch[0]);
+        }
+        throw new Error("Invalid subtask format from AI");
+    } catch (error) {
+        log(`AI task breakdown error: ${error}`, "ai");
+        return [
+            { id: "st1", title: "Review foundational concepts", completed: false },
+            { id: "st2", title: "Identify primary sources", completed: false },
+            { id: "st3", title: "Summarize key takeaways", completed: false },
+            { id: "st4", title: "Self-assessment check", completed: false }
+        ];
+    }
+}
+
+export async function generateStudyInsights(stats: {
+    mostFocusedSubject: string;
+    leastFocusedSubject: string;
+    completionRate: number;
+    totalFocusMinutes: number;
+    sessionsThisWeek: number;
+}) {
+    try {
+        const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "placeholder-key");
+        const model = genAI.getGenerativeModel({ model: "models/gemini-1.5-flash" });
+
+        const prompt = `
+            You are 'StudyFlow AI', a premium academic coach. 
+            Analyze the following study data and provide a short, motivating insight (2-3 sentences max).
+            Focus on balance and efficiency.
+            
+            Stats:
+            - Most Focused Subject: ${stats.mostFocusedSubject}
+            - Least Focused Subject: ${stats.leastFocusedSubject}
+            - Task Completion Rate: ${stats.completionRate}%
+            - Total Focus Time: ${Math.floor(stats.totalFocusMinutes / 60)}h ${stats.totalFocusMinutes % 60}m
+            - Sessions this week: ${stats.sessionsThisWeek}
+            
+            Format: One catchy title/header, followed by the insight.
+        `;
+
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        return response.text();
+    } catch (error) {
+        log(`AI insights error: ${error}`, "ai");
+        return `### 💡 Study Flow Insight
+You've focused heavily on ${stats.mostFocusedSubject} this week, which is great for mastery! However, ${stats.leastFocusedSubject} hasn't seen much attention lately. Try a quick 25-minute Pomodoro session on ${stats.leastFocusedSubject} tomorrow to keep your progress balanced.`;
+    }
+}

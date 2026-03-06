@@ -70,6 +70,45 @@ export const tasks = pgTable("tasks", {
   completedAt: text("completed_at"),
   kanbanOrder: integer("kanban_order").notNull().default(0),
   riskLevel: text("risk_level").notNull().default("normal"),
+  isLocked: integer("is_locked").notNull().default(0),
+  subtasks: jsonb("subtasks"), // Array of { id: string, title: string, completed: boolean }
+  createdAt: text("created_at").notNull().default(sql`now()`),
+});
+
+export const taskAssignments = pgTable("task_assignments", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  taskId: integer("task_id").notNull().references(() => tasks.id, { onDelete: "cascade" }),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  assignedAt: text("assigned_at").notNull().default(sql`now()`),
+});
+
+export const taskComments = pgTable("task_comments", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  taskId: integer("task_id").notNull().references(() => tasks.id, { onDelete: "cascade" }),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  replyToId: integer("reply_to_id").references((): any => taskComments.id, { onDelete: "set null" }),
+  content: text("content").notNull(),
+  createdAt: text("created_at").notNull().default(sql`now()`),
+});
+
+export const taskAttachments = pgTable("task_attachments", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  taskId: integer("task_id").notNull().references(() => tasks.id, { onDelete: "cascade" }),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  url: text("url").notNull(),
+  type: text("type").notNull(), // 'pdf', 'image', 'link'
+  createdAt: text("created_at").notNull().default(sql`now()`),
+});
+
+export const kanbanActivity = pgTable("kanban_activity", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  groupId: integer("group_id").notNull().references(() => studyGroups.id, { onDelete: "cascade" }),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  taskId: integer("task_id").references(() => tasks.id, { onDelete: "cascade" }),
+  action: text("action").notNull(), // 'created', 'moved', 'commented', 'assigned', 'completed'
+  details: text("details"),
+  createdAt: text("created_at").notNull().default(sql`now()`),
 });
 
 export const pomodoroSessions = pgTable("pomodoro_sessions", {
@@ -77,9 +116,31 @@ export const pomodoroSessions = pgTable("pomodoro_sessions", {
   userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }),
   subjectId: integer("subject_id").references(() => subjects.id, { onDelete: "set null" }),
   taskId: integer("task_id").references(() => tasks.id, { onDelete: "set null" }),
+  type: text("type").notNull().default("focus"), // 'focus', 'short-break', 'long-break'
   duration: integer("duration").notNull(),
   completedAt: text("completed_at").notNull(),
 });
+
+export const activeTimer = pgTable("active_timer", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  type: text("type").notNull(), // 'focus', 'short-break', 'long-break'
+  startTime: text("start_time").notNull(),
+  duration: integer("duration").notNull(), // Initial total duration in seconds
+  subjectId: integer("subject_id").references(() => subjects.id, { onDelete: "set null" }),
+  taskId: integer("task_id").references(() => tasks.id, { onDelete: "set null" }),
+});
+
+export const insertActiveTimerSchema = z.object({
+  type: z.string(),
+  startTime: z.string(),
+  duration: z.number(),
+  subjectId: z.number().nullable().optional(),
+  taskId: z.number().nullable().optional(),
+});
+
+export type ActiveTimer = typeof activeTimer.$inferSelect;
+export type InsertActiveTimer = z.infer<typeof insertActiveTimerSchema>;
 
 export const resources = pgTable("resources", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
@@ -156,11 +217,14 @@ export const insertTaskSchema = z.object({
   estimatedMinutes: z.number().int().nullable().optional(),
   kanbanOrder: z.number().int().default(0),
   riskLevel: z.string().default("normal"),
+  isLocked: z.number().int().default(0),
+  subtasks: z.any().optional(),
 });
 
 export const insertPomodoroSessionSchema = z.object({
   subjectId: z.number().int().nullable().optional(),
   taskId: z.number().int().nullable().optional(),
+  type: z.string().optional(), // 'focus', 'short-break', 'long-break'
   duration: z.number().int(),
   completedAt: z.string(),
 });
@@ -280,3 +344,7 @@ export type Quiz = typeof quizzes.$inferSelect;
 export type QuizQuestion = typeof quizQuestions.$inferSelect;
 export type QuizResult = typeof quizResults.$inferSelect;
 export type UserActivity = typeof userActivities.$inferSelect;
+export type TaskAssignment = typeof taskAssignments.$inferSelect;
+export type TaskComment = typeof taskComments.$inferSelect;
+export type TaskAttachment = typeof taskAttachments.$inferSelect;
+export type KanbanActivity = typeof kanbanActivity.$inferSelect;

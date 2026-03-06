@@ -39,7 +39,6 @@ const KANBAN_COLUMNS = [
 ];
 
 export default function KanbanPage() {
-  const [filterGroup, setFilterGroup] = useState<string>("all");
   const { toast } = useToast();
 
   const { data: tasks = [], isLoading: loadingTasks } = useQuery<Task[]>({
@@ -48,10 +47,6 @@ export default function KanbanPage() {
   const { data: subjects = [] } = useQuery<Subject[]>({
     queryKey: ["/api/subjects"],
   });
-  const { data: groups = [] } = useQuery<StudyGroup[]>({
-    queryKey: ["/api/groups"],
-  });
-
   const subjectMap = new Map(subjects.map((s) => [s.id, s]));
 
   const updateMutation = useMutation({
@@ -132,9 +127,7 @@ export default function KanbanPage() {
     );
   }
 
-  const filteredTasks = filterGroup === "all"
-    ? tasks
-    : tasks.filter((t) => t.groupId === parseInt(filterGroup));
+  const filteredTasks = tasks;
 
   return (
     <div className="min-h-screen bg-transparent animate-fade-in pb-40 relative">
@@ -167,17 +160,7 @@ export default function KanbanPage() {
             <div className="flex flex-wrap items-center gap-4 relative z-10">
               <div className="flex items-center gap-3 p-1.5 pl-4 rounded-2xl bg-muted/40 border border-border/40 focus-within:ring-2 ring-primary/20 transition-all">
                 <Filter className="h-4 w-4 text-muted-foreground" />
-                <Select value={filterGroup} onValueChange={setFilterGroup}>
-                  <SelectTrigger className="w-40 bg-transparent border-none font-bold text-xs uppercase tracking-wider focus:ring-0">
-                    <SelectValue placeholder="All Sources" />
-                  </SelectTrigger>
-                  <SelectContent className="rounded-2xl border-border/50 bg-card/95 backdrop-blur-xl">
-                    <SelectItem value="all" className="rounded-xl font-bold text-xs">All Subjects</SelectItem>
-                    {groups.map((g) => (
-                      <SelectItem key={g.id} value={g.id.toString()} className="rounded-xl font-bold text-xs">{g.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground pr-2">Personal Missions</span>
               </div>
               <Button
                 onClick={() => aiReorderMutation.mutate()}

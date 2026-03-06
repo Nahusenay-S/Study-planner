@@ -8,9 +8,12 @@ import {
   users, subjects, tasks, pomodoroSessions, resources,
   studyGroups, groupMembers, comments, notifications,
   groupMessages, quizzes, quizQuestions, quizResults, userActivities,
-  type GroupMessage, type Quiz, type QuizQuestion, type QuizResult, type UserActivity
+  taskAssignments, taskComments, taskAttachments, kanbanActivity, activeTimer,
+  type GroupMessage, type Quiz, type QuizQuestion, type QuizResult, type UserActivity,
+  type TaskAssignment, type TaskComment, type TaskAttachment, type KanbanActivity,
+  type ActiveTimer, type InsertActiveTimer
 } from "@shared/schema";
-import { eq, and, or, desc, inArray } from "drizzle-orm";
+import { eq, and, or, desc, asc, inArray, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import { nanoid } from "nanoid";
@@ -37,7 +40,7 @@ export interface IStorage {
 
   // Tasks
   getTasks(userId: number): Promise<Task[]>;
-  getGroupTasks(groupId: number): Promise<Task[]>;
+  getGroupTasks(groupId: number): Promise<(Task & { assignments: (TaskAssignment & { user: { username: string, avatar: string | null } })[] })[]>;
   getTask(id: number, userId: number): Promise<Task | undefined>;
   createTask(userId: number, task: InsertTask): Promise<Task>;
   updateTask(id: number, userId: number, task: Partial<InsertTask & { completedAt: string | null }>): Promise<Task | undefined>;
@@ -46,6 +49,9 @@ export interface IStorage {
   // Pomodoro
   getPomodoroSessions(userId: number): Promise<PomodoroSession[]>;
   createPomodoroSession(userId: number, session: InsertPomodoroSession): Promise<PomodoroSession>;
+  getActiveTimer(userId: number): Promise<ActiveTimer | undefined>;
+  setActiveTimer(userId: number, timer: InsertActiveTimer): Promise<ActiveTimer>;
+  deleteActiveTimer(userId: number): Promise<void>;
 
   // Resources
   getResources(userId: number): Promise<Resource[]>;
@@ -76,6 +82,7 @@ export interface IStorage {
   markNotificationRead(id: number, userId: number): Promise<boolean>;
   markAllNotificationsRead(userId: number): Promise<boolean>;
   clearNotifications(userId: number): Promise<boolean>;
+  clearKanbanActivity(groupId: number): Promise<void>;
 
   // Premium Group Features (Phase 3)
   getGroupMessages(groupId: number): Promise<(GroupMessage & { user: { username: string, avatar: string | null } })[]>;
@@ -141,12 +148,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getTasks(userId: number): Promise<Task[]> {
-    return await db.select().from(tasks).where(eq(tasks.userId, userId));
+    return await db.select().from(tasks).where(and(eq(tasks.userId, userId), isNull(tasks.groupId)));
   }
 
-  async getGroupTasks(groupId: number): Promise<Task[]> {
-    return await db.select().from(tasks).where(eq(tasks.groupId, groupId));
-  }
+
 
   async getTask(id: number, userId: number): Promise<Task | undefined> {
     const [task] = await db.select().from(tasks).where(and(eq(tasks.id, id), eq(tasks.userId, userId)));
@@ -173,8 +178,64 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createPomodoroSession(userId: number, session: InsertPomodoroSession): Promise<PomodoroSession> {
-    const [created] = await db.insert(pomodoroSessions).values({ ...session, userId }).returning();
+    // Session Merging Logic: Check if we should append to the last session
+    // This allows real-time minute updates while keeping history clean.
+    const [lastSession] = await db.select().from(pomodoroSessions)
+      .where(eq(pomodoroSessions.userId, userId))
+      .orderBy(desc(pomodoroSessions.id))
+      .limit(1);
+
+    const now = new Date();
+    const canMerge = lastSession &&
+      lastSession.type === (session.type || 'focus') &&
+      lastSession.subjectId === session.subjectId &&
+      lastSession.taskId === session.taskId &&
+      (now.getTime() - new Date(lastSession.completedAt).getTime()) < 300000; // 5 minute window
+
+    let result: PomodoroSession;
+
+    if (canMerge && lastSession) {
+      const [updated] = await db.update(pomodoroSessions)
+        .set({
+          duration: lastSession.duration + session.duration,
+          completedAt: session.completedAt
+        })
+        .where(eq(pomodoroSessions.id, lastSession.id))
+        .returning();
+      result = updated;
+    } else {
+      const [created] = await db.insert(pomodoroSessions).values({ ...session, userId }).returning();
+      result = created;
+    }
+
+    // If it's a focus session, update total study minutes on the user
+    if (session.type === 'focus' || !session.type) {
+      const user = await this.getUserById(userId);
+      if (user) {
+        await this.updateUser(userId, {
+          totalStudyMinutes: user.totalStudyMinutes + (session.duration || 0)
+        });
+        await this.updateUserStreak(userId);
+      }
+    }
+
+    return result;
+  }
+
+  async getActiveTimer(userId: number): Promise<ActiveTimer | undefined> {
+    const [timer] = await db.select().from(activeTimer).where(eq(activeTimer.userId, userId));
+    return timer;
+  }
+
+  async setActiveTimer(userId: number, timer: InsertActiveTimer): Promise<ActiveTimer> {
+    // Upsert logic
+    await this.deleteActiveTimer(userId);
+    const [created] = await db.insert(activeTimer).values({ ...timer, userId }).returning();
     return created;
+  }
+
+  async deleteActiveTimer(userId: number): Promise<void> {
+    await db.delete(activeTimer).where(eq(activeTimer.userId, userId));
   }
 
   async getResources(userId: number): Promise<Resource[]> {
@@ -299,6 +360,16 @@ export class DatabaseStorage implements IStorage {
     return !!member;
   }
 
+  async leaveStudyGroup(userId: number, groupId: number): Promise<boolean> {
+    const result = await db.delete(groupMembers).where(and(eq(groupMembers.userId, userId), eq(groupMembers.groupId, groupId))).returning();
+    return result.length > 0;
+  }
+
+  async deleteStudyGroup(id: number): Promise<boolean> {
+    const result = await db.delete(studyGroups).where(eq(studyGroups.id, id)).returning();
+    return result.length > 0;
+  }
+
   // Comments (Phase 2)
   async getComments(resourceId: number): Promise<(Comment & { user: { id: number, username: string, displayName: string | null, avatar: string | null, bio: string | null } })[]> {
     const results = await db.select({
@@ -327,6 +398,134 @@ export class DatabaseStorage implements IStorage {
       userId
     }).returning();
     return created;
+  }
+
+  // Kanban & Task Features (Expanded)
+  async getGroupTasks(groupId: number): Promise<(Task & { assignments: (TaskAssignment & { user: { username: string, avatar: string | null } })[] })[]> {
+    const results = await db.select().from(tasks).where(eq(tasks.groupId, groupId));
+
+    // Optimize: In a real app we might join, but here we can map for simplicity given the frequency
+    const enrichedTasks = await Promise.all(results.map(async (task) => {
+      const assignments = await db.select({
+        assignment: taskAssignments,
+        user: users
+      })
+        .from(taskAssignments)
+        .innerJoin(users, eq(taskAssignments.userId, users.id))
+        .where(eq(taskAssignments.taskId, task.id));
+
+      return {
+        ...task,
+        assignments: assignments.map(a => ({
+          ...a.assignment,
+          user: { username: a.user.username, avatar: a.user.avatar }
+        }))
+      };
+    }));
+
+    return enrichedTasks;
+  }
+
+  async getTaskAssignments(taskId: number): Promise<(TaskAssignment & { user: { username: string, avatar: string | null } })[]> {
+    const results = await db.select({
+      assignment: taskAssignments,
+      user: users
+    })
+      .from(taskAssignments)
+      .innerJoin(users, eq(taskAssignments.userId, users.id))
+      .where(eq(taskAssignments.taskId, taskId));
+
+    return results.map(r => ({
+      ...r.assignment,
+      user: { username: r.user.username, avatar: r.user.avatar }
+    }));
+  }
+
+  async assignUserToTask(taskId: number, userId: number): Promise<TaskAssignment> {
+    const [existing] = await db.select().from(taskAssignments).where(and(eq(taskAssignments.taskId, taskId), eq(taskAssignments.userId, userId)));
+    if (existing) return existing;
+
+    const [assignment] = await db.insert(taskAssignments).values({ taskId, userId }).returning();
+    return assignment;
+  }
+
+  async unassignUserFromTask(taskId: number, userId: number): Promise<boolean> {
+    const result = await db.delete(taskAssignments).where(and(eq(taskAssignments.taskId, taskId), eq(taskAssignments.userId, userId))).returning();
+    return result.length > 0;
+  }
+
+  async getTaskComments(taskId: number): Promise<(TaskComment & { user: { username: string, avatar: string | null } })[]> {
+    const results = await db.select({
+      comment: taskComments,
+      user: users
+    })
+      .from(taskComments)
+      .innerJoin(users, eq(taskComments.userId, users.id))
+      .where(eq(taskComments.taskId, taskId))
+      .orderBy(asc(taskComments.id));
+
+    return results.map(r => ({
+      ...r.comment,
+      user: { username: r.user.username, avatar: r.user.avatar }
+    }));
+  }
+
+  async createTaskComment(userId: number, taskId: number, content: string, replyToId?: number): Promise<TaskComment> {
+    const [comment] = await db.insert(taskComments).values({
+      userId,
+      taskId,
+      content,
+      replyToId: replyToId || null
+    }).returning();
+    return comment;
+  }
+
+  async getTaskAttachments(taskId: number): Promise<TaskAttachment[]> {
+    return await db.select().from(taskAttachments).where(eq(taskAttachments.taskId, taskId));
+  }
+
+  async createTaskAttachment(userId: number, taskId: number, attachment: { name: string, url: string, type: string }): Promise<TaskAttachment> {
+    const [created] = await db.insert(taskAttachments).values({
+      ...attachment,
+      userId,
+      taskId
+    }).returning();
+    return created;
+  }
+
+  async getKanbanActivity(groupId: number): Promise<(KanbanActivity & { user: { username: string, avatar: string | null }, taskTitle: string | null })[]> {
+    const results = await db.select({
+      activity: kanbanActivity,
+      user: users,
+      task: tasks
+    })
+      .from(kanbanActivity)
+      .innerJoin(users, eq(kanbanActivity.userId, users.id))
+      .leftJoin(tasks, eq(kanbanActivity.taskId, tasks.id))
+      .where(eq(kanbanActivity.groupId, groupId))
+      .orderBy(desc(kanbanActivity.id))
+      .limit(50);
+
+    return results.map(r => ({
+      ...r.activity,
+      user: { username: r.user.username, avatar: r.user.avatar },
+      taskTitle: r.task?.title || null
+    }));
+  }
+
+  async logKanbanActivity(groupId: number, userId: number, action: string, taskId?: number, details?: string): Promise<KanbanActivity> {
+    const [activity] = await db.insert(kanbanActivity).values({
+      groupId,
+      userId,
+      taskId: taskId || null,
+      action,
+      details: details || null
+    }).returning();
+    return activity;
+  }
+
+  async clearKanbanActivity(groupId: number): Promise<void> {
+    await db.delete(kanbanActivity).where(eq(kanbanActivity.groupId, groupId));
   }
 
   // Notifications (Phase 2)
@@ -386,12 +585,13 @@ export class DatabaseStorage implements IStorage {
     }));
   }
 
-  async createGroupMessage(userId: number, groupId: number, content: string, replyToId?: number): Promise<GroupMessage> {
+  async createGroupMessage(userId: number, groupId: number, content: string, replyToId?: number, attachmentType?: string): Promise<GroupMessage> {
     const [message] = await db.insert(groupMessages).values({
       userId,
       groupId,
       content,
-      replyToId: replyToId || null
+      replyToId: replyToId || null,
+      attachmentType: attachmentType || null
     }).returning();
     return message;
   }

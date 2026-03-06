@@ -1,10 +1,10 @@
 import express, { type Request, Response, NextFunction } from "express";
-import { registerRoutes } from "./routes.js";
-import { serveStatic } from "./static.js";
+import { registerRoutes } from "./routes";
+import { serveStatic } from "./static";
 import { createServer } from "http";
 import fs from "fs";
 import path from "path";
-import { setupWebSocket } from "./ws.js";
+import { setupWebSocket } from "./ws";
 
 // Manually load .env for local development ONLY (Vercel handles this automatically)
 if (!process.env.VERCEL && fs.existsSync(".env")) {

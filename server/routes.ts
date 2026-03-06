@@ -14,12 +14,18 @@ import { generateStudySchedule, summarizeResource, calculateReadinessScore, chat
 import { broadcastToGroup } from "./ws";
 import { differenceInDays, parseISO, startOfDay } from "date-fns";
 
-const uploadsDir = path.join(process.cwd(), "uploads", "avatars");
-const resourcesDir = path.join(process.cwd(), "uploads", "resources");
-const chatUploadsDir = path.join(process.cwd(), "uploads", "chat");
-if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
-if (!fs.existsSync(resourcesDir)) fs.mkdirSync(resourcesDir, { recursive: true });
-if (!fs.existsSync(chatUploadsDir)) fs.mkdirSync(chatUploadsDir, { recursive: true });
+const isVercel = !!process.env.VERCEL;
+const baseDir = isVercel ? "/tmp" : process.cwd();
+
+const uploadsDir = path.join(baseDir, "uploads", "avatars");
+const resourcesDir = path.join(baseDir, "uploads", "resources");
+const chatUploadsDir = path.join(baseDir, "uploads", "chat");
+
+if (!isVercel) {
+  if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+  if (!fs.existsSync(resourcesDir)) fs.mkdirSync(resourcesDir, { recursive: true });
+  if (!fs.existsSync(chatUploadsDir)) fs.mkdirSync(chatUploadsDir, { recursive: true });
+}
 
 const avatarStorage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, uploadsDir),

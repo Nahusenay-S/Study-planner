@@ -2,22 +2,14 @@
     "version": 2,
     "builds": [
         {
-            "src": "server/index.ts",
+            "src": "dist/index.cjs",
             "use": "@vercel/node"
         }
     ],
-    "routes": [
+    "rewrites": [
         {
-            "src": "/uploads/(.*)",
-            "dest": "/client/public/uploads/$1"
-        },
-        {
-            "src": "/api/(.*)",
-            "dest": "server/index.ts"
-        },
-        {
-            "src": "/(.*)",
-            "dest": "server/index.ts"
+            "source": "/(.*)",
+            "destination": "dist/index.cjs"
         }
     ]
 }

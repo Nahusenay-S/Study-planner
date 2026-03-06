@@ -20,6 +20,7 @@ import { nanoid } from "nanoid";
 
 const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
+  ssl: process.env.VERCEL ? { rejectUnauthorized: false } : false
 });
 
 export const db = drizzle(pool);

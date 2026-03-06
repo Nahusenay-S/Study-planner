@@ -1,11 +1,21 @@
-import "./env";
 import express, { type Request, Response, NextFunction } from "express";
-import { registerRoutes } from "./routes";
-import { serveStatic } from "./static";
+import { registerRoutes } from "./routes.js";
+import { serveStatic } from "./static.js";
 import { createServer } from "http";
 import fs from "fs";
 import path from "path";
-import { setupWebSocket } from "./ws";
+import { setupWebSocket } from "./ws.js";
+
+// Manually load .env for local development ONLY (Vercel handles this automatically)
+if (!process.env.VERCEL && fs.existsSync(".env")) {
+  const envContent = fs.readFileSync(".env", "utf8");
+  envContent.split("\n").forEach(line => {
+    const [key, ...valueParts] = line.split("=");
+    if (key && valueParts.length > 0) {
+      process.env[key.trim()] = valueParts.join("=").trim().replace(/^["']|["']$/g, "");
+    }
+  });
+}
 
 const app = express();
 export const httpServer = createServer(app);
@@ -65,45 +75,40 @@ app.use((req, res, next) => {
   next();
 });
 
-(async () => {
-  console.log("DATABASE_URL defined:", !!process.env.DATABASE_URL);
+// Define a helper to check if we are in a serverless environment
+const isVercel = !!process.env.VERCEL;
 
+(async () => {
+  // Always register routes
   await registerRoutes(httpServer, app);
 
-  // Initialize Real-Time WebSocket Server
-  const wss = setupWebSocket(httpServer);
+  // Initialize Real-Time WebSocket Server ONLY if not on Vercel
+  if (!isVercel) {
+    setupWebSocket(httpServer);
+  }
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
-
     console.error("Internal Server Error:", err);
-
-    if (res.headersSent) {
-      return next(err);
-    }
-
+    if (res.headersSent) return next(err);
     return res.status(status).json({ message });
   });
 
   if (process.env.NODE_ENV === "production") {
     serveStatic(app);
-  } else {
+  } else if (!isVercel) {
+    // Vite setup should only happen in local dev
     const { setupVite } = await import("./vite");
     await setupVite(httpServer, app);
   }
 
-  if (process.env.NODE_ENV !== 'test' && !process.env.VERCEL) {
+  // Only start listening if not on Vercel
+  if (!isVercel && process.env.NODE_ENV !== 'test') {
     const port = parseInt(process.env.PORT || "5000", 10);
-    httpServer.listen(
-      {
-        port,
-        host: "0.0.0.0",
-      },
-      () => {
-        log(`serving on port ${port}`);
-      },
-    );
+    httpServer.listen({ port, host: "0.0.0.0" }, () => {
+      log(`serving on port ${port}`);
+    });
   }
 })();
 

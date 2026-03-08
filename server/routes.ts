@@ -135,11 +135,12 @@ export async function registerRoutes(
       secret: process.env.SESSION_SECRET || "studyflow-secret-key",
       resave: false,
       saveUninitialized: false,
+      proxy: true, // Tell express-session to trust the proxy
       cookie: {
         maxAge: 30 * 24 * 60 * 60 * 1000,
         httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
+        secure: (process.env.NODE_ENV === "production" || !!process.env.RENDER || !!process.env.VERCEL),
+        sameSite: (process.env.NODE_ENV === "production" || !!process.env.RENDER) ? "none" : "lax",
       },
     })
   );

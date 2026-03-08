@@ -18,6 +18,7 @@ if (!process.env.VERCEL && !process.env.RENDER && fs.existsSync(".env")) {
 }
 
 const app = express();
+app.set("trust proxy", 1);
 export const httpServer = createServer(app);
 export { app };
 

@@ -1,6 +1,7 @@
 import entry from '../dist/index.cjs';
 
-// In CJS-to-ESM interop, the app is often on the .default property
-const app = entry.default || entry;
+// The compiled server exports an async handler that awaits full initialization
+// before processing any request (fixes cold-start race conditions on Vercel)
+const handler = entry.default || entry;
 
-export default app;
+export default handler;

@@ -78,8 +78,8 @@ app.use((req, res, next) => {
 // Define a helper to check if we are in a serverless environment
 const isVercel = !!process.env.VERCEL;
 
-// Define initialization promise
-const initApp = (async () => {
+// Define initialization promise — must resolve before any request is handled
+const initAppPromise = (async () => {
   await registerRoutes(httpServer, app);
 
   if (!isVercel) {
@@ -109,5 +109,8 @@ const initApp = (async () => {
   }
 })();
 
-// Export the app for Vercel
-export default app;
+// Export an async handler for Vercel — awaits full init to avoid cold-start race conditions
+export default async function handler(req: any, res: any) {
+  await initAppPromise;
+  return app(req, res);
+}

@@ -6,6 +6,8 @@ export function useAuth() {
   const { data: user, isLoading } = useQuery<User | null>({
     queryKey: ["/api/auth/me"],
     queryFn: getQueryFn({ on401: "returnNull" }),
+    retry: false,
+    staleTime: 0,
   });
 
   const loginMutation = useMutation({

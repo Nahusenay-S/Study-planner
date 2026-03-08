@@ -6,8 +6,8 @@ import fs from "fs";
 import path from "path";
 import { setupWebSocket } from "./ws";
 
-// Manually load .env for local development ONLY (Vercel handles this automatically)
-if (!process.env.VERCEL && fs.existsSync(".env")) {
+// Manually load .env for local development ONLY
+if (!process.env.VERCEL && !process.env.RENDER && fs.existsSync(".env")) {
   const envContent = fs.readFileSync(".env", "utf8");
   envContent.split("\n").forEach(line => {
     const [key, ...valueParts] = line.split("=");

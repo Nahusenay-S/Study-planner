@@ -13,7 +13,7 @@ services:
         fromDatabase:
           name: study-planner-db
           property: connectionString
-      - key: GOOGLE_AI_API_KEY
+      - key: GEMINI_API_KEY
         sync: false # User must set this manually in Render UI
 
 databases:
